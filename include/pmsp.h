@@ -21,8 +21,10 @@ enum {
     PMSP_ERR_HTTP = -8
 };
 
-/* One HTTPS GET. The parsed response body (not HTTP headers or chunk framing)
- * is streamed to callback in fixed-size chunks.
+/* One HTTPS GET. The parsed final response body (not HTTP headers or chunk
+ * framing) is streamed to callback in fixed-size chunks. Follows up to five
+ * HTTP 301, 302, 303, 307, and 308 redirects. HTTPS-to-HTTP redirects are
+ * rejected; every redirect target gets normal TLS certificate/hostname checks.
  * host excludes scheme and port; path begins with '/'; NULL ca_file uses the
  * POSIX system CA bundle. This first version is POSIX-only.
  */
