@@ -4,8 +4,8 @@
 PSP_MODULE_INFO("PMSP", PSP_MODULE_USER, 1, 0);
 PSP_NO_CREATE_MAIN_THREAD();
 
-static int g_status = PMSP_STATUS_STOPPED;
-static int g_last_error = PMSP_OK;
+int g_status = PMSP_STATUS_STOPPED;
+int g_last_error = PMSP_OK;
 
 unsigned int pmspGetVersion(void)
 {
@@ -22,10 +22,6 @@ int pmspGetLastError(void)
     return g_last_error;
 }
 
-/*
- * The caller passes a PMSPApi structure as module_start() arguments.
- * Function pointers are filled only after validating the structure size.
- */
 int module_start(SceSize args, void *argp)
 {
     PMSPApi *api;
@@ -42,6 +38,7 @@ int module_start(SceSize args, void *argp)
     api->get_version = pmspGetVersion;
     api->get_status = pmspGetStatus;
     api->get_last_error = pmspGetLastError;
+    api->https_get = pmspHttpsGet;
 
     g_last_error = PMSP_OK;
     g_status = PMSP_STATUS_READY;
