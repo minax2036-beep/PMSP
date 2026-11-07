@@ -28,3 +28,7 @@ jobs:
           ./build/pmsp-get example.com / > response.txt
           cat response.txt
           grep -q "Example Domain" response.txt
+      - name: HTTPS redirect test
+        run: |
+          ./build/pmsp-get httpbin.org /redirect/1 > redirect-response.txt
+          grep -q '"url"' redirect-response.txt
