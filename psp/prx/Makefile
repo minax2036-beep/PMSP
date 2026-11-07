@@ -1,5 +1,5 @@
 TARGET = pmsp
-OBJS = main.o
+OBJS = main.o https.o
 
 BUILD_PRX = 1
 PRX_EXPORTS = exports.exp
@@ -9,6 +9,7 @@ INCDIR = ../include
 CFLAGS = -O2 -G0 -Wall -Wextra
 ASFLAGS = $(CFLAGS)
 LDFLAGS = -nostartfiles
+LIBS = -lpsphttp -lpspssl -lpspiofilemgr
 NO_FIXUP_IMPORTS = 1
 
 EXTRA_TARGETS = $(TARGET).prx
