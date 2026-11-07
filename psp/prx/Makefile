@@ -9,7 +9,7 @@ INCDIR = ../include
 CFLAGS = -O2 -G0 -Wall -Wextra
 ASFLAGS = $(CFLAGS)
 LDFLAGS = -nostartfiles
-LIBS = -lpsphttp -lpspssl -lpspiofilemgr
+LIBS = -lpsphttp -lpspssl
 NO_FIXUP_IMPORTS = 1
 
 EXTRA_TARGETS = $(TARGET).prx
