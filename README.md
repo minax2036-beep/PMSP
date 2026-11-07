@@ -13,7 +13,8 @@ PMSP's own TLS and HTTP code.
 - TCP: POSIX sockets (initial development platform)
 - TLS: Mbed TLS 3.6.3
 - Verification: CA chain and hostname verification are required
-- HTTP: basic HTTP/1.1 GET
+- HTTP: HTTP/1.1 GET, status/header parsing, Content-Length and chunked bodies
+- Redirects: follows up to five 301/302/303/307/308 redirects; HTTPS downgrade is rejected
 - Response: parses status and headers; streams the response body in fixed-size chunks; decodes chunked transfer encoding
 - Build: CMake and GitHub Actions
 
@@ -34,7 +35,7 @@ for the first configure (CMake fetches Mbed TLS).
 
     ./build/pmsp-get example.com /
 
-The program prints only the decoded HTTP response body to standard output. HTTP status and diagnostics are written to standard error.
+The program prints only the final decoded HTTP response body to standard output. HTTP status and diagnostics are written to standard error. HTTPS redirects are followed automatically (maximum five hops).
 
 GitHub RAW example:
 
@@ -49,7 +50,7 @@ pass the correct CA bundle path as the fourth argument.
 
 ## Current limitations
 
-This is an early prototype, not yet a complete HTTP client. It does not yet follow redirects or save downloaded files. It currently supports Content-Length, chunked transfer encoding, and close-delimited response bodies.
+This is an early prototype, not yet a complete HTTP client. It does not yet save downloaded files. It supports absolute HTTPS and relative redirect locations, Content-Length, chunked transfer encoding, and close-delimited response bodies. Redirects to plain HTTP are rejected.
 
 ## Memory goals
 
