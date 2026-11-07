@@ -5,7 +5,7 @@
 
 PSP_MODULE_INFO("PMSP Tester", PSP_MODULE_USER, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER);
-#define PMSP_PRX_PATH "ms0:/PMSP/pmsp.prx"
+#define PMSP_PRX_PATH "ms0:/PSP/GAME/PMSP/pmsp.prx"
 
 static void wait_for_confirm(void)
 {
@@ -41,7 +41,7 @@ int main(void)
     if (module_id < 0) {
         pspDebugScreenPrintf("FAILED: sceKernelLoadModule\n");
         print_error("Error", module_id);
-        pspDebugScreenPrintf("\nCopy pmsp.prx to ms0:/PMSP/\nPress X or O to exit.");
+        pspDebugScreenPrintf("\nCopy pmsp.prx beside EBOOT.PBP in ms0:/PSP/GAME/PMSP/\nPress X or O to exit.");
         wait_for_confirm();
         sceKernelExitGame();
         return 0;
