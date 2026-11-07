@@ -17,6 +17,7 @@ PMSP's own TLS and HTTP code.
 - Redirects: follows up to five 301/302/303/307/308 redirects; HTTPS downgrade is rejected
 - Response: parses status and headers; streams the response body in fixed-size chunks; decodes chunked transfer encoding
 - Download: writes the decoded response body to a temporary file, then renames it after a successful transfer
+- GitHub tag archives: downloads a ZIP source archive for a specified repository tag
 - Build: CMake and GitHub Actions
 
 PMSP does not implement its own cryptographic algorithms. TLS security checks
@@ -48,6 +49,15 @@ specified. HTTP status and diagnostics are written to standard error.
 GitHub RAW example:
 
     ./build/pmsp-get raw.githubusercontent.com /minax2036-beep/PMSP/main/README.md --output README-downloaded.md
+
+Download a ZIP source archive for a specific GitHub tag:
+
+    ./build/pmsp-get github-tag minax2036-beep/PMSP v0.1.0 --output PMSP-v0.1.0.zip
+
+The command downloads GitHub's generated source ZIP for the exact tag name.
+Tag characters outside the URL-unreserved set are percent-encoded. Non-2xx
+HTTP responses, including an unknown tag (404), are treated as errors and the
+temporary output file is discarded.
 
 Optional arguments:
 
