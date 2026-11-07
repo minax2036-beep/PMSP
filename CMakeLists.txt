@@ -12,7 +12,7 @@ set(USE_SHARED_MBEDTLS_LIBRARY OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     mbedtls
     GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
-    GIT_TAG mbedtls-4.1.1
+    GIT_TAG mbedtls-3.6.3
     GIT_SHALLOW TRUE
     GIT_SUBMODULES_RECURSE TRUE
 )
