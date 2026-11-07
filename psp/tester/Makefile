@@ -1,7 +1,7 @@
 TARGET = pmsp_tester
 OBJS = main.o
 
-INCDIR =
+INCDIR = ../include
 CFLAGS = -O2 -G0 -Wall -Wextra
 CXXFLAGS = $(CFLAGS)
 ASFLAGS = $(CFLAGS)
