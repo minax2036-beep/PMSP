@@ -31,8 +31,7 @@ int pmsp_net_connect(const char *host, const char *port)
     }
 
     for (address = addresses; address != NULL; address = address->ai_next) {
-        socket_fd = socket(address->ai_family,
-                           address->ai_socktype,
+        socket_fd = socket(address->ai_family, address->ai_socktype,
                            address->ai_protocol);
         if (socket_fd < 0) {
             continue;
@@ -69,11 +68,9 @@ int pmsp_net_send(void *context, const unsigned char *buffer, size_t length)
     if (n >= 0) {
         return (int)n;
     }
-
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
         return MBEDTLS_ERR_SSL_WANT_WRITE;
     }
-
     return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
 }
 
@@ -89,10 +86,8 @@ int pmsp_net_recv(void *context, unsigned char *buffer, size_t length)
     if (n >= 0) {
         return (int)n;
     }
-
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
         return MBEDTLS_ERR_SSL_WANT_READ;
     }
-
     return MBEDTLS_ERR_SSL_INTERNAL_ERROR;
 }
