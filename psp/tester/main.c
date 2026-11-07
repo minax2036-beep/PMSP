@@ -1,6 +1,7 @@
 #include <pspkernel.h>
 #include <pspdebug.h>
 #include <pspctrl.h>
+#include "pmsp_api.h"
 
 PSP_MODULE_INFO("PMSP Tester", PSP_MODULE_USER, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER);
@@ -23,21 +24,28 @@ static void wait_for_confirm(void)
     }
 }
 
+static void print_error(const char *label, int error)
+{
+    pspDebugScreenPrintf("%s: 0x%08X\n", label, (unsigned int)error);
+}
+
 int main(void)
 {
     SceUID module_id;
     int status = 0;
     int start_result;
+    int stop_result;
+    PMSPApi api;
 
     pspDebugScreenInit();
-    pspDebugScreenPrintf("PMSP Tester\n");
+    pspDebugScreenPrintf("PMSP Tester - API test\n");
     pspDebugScreenPrintf("------------------------------\n");
     pspDebugScreenPrintf("Loading: %s\n\n", PMSP_PRX_PATH);
 
     module_id = sceKernelLoadModule(PMSP_PRX_PATH, 0, NULL);
     if (module_id < 0) {
         pspDebugScreenPrintf("FAILED: sceKernelLoadModule\n");
-        pspDebugScreenPrintf("Error: 0x%08X\n", (unsigned int)module_id);
+        print_error("Error", module_id);
         pspDebugScreenPrintf("\nCopy pmsp.prx to ms0:/PMSP/\n");
         pspDebugScreenPrintf("Press X or O to exit.");
         wait_for_confirm();
@@ -46,26 +54,68 @@ int main(void)
     }
 
     pspDebugScreenPrintf("PRX loaded. Module ID: %d\n", module_id);
-    pspDebugScreenPrintf("Starting module...\n");
+    pspDebugScreenPrintf("Starting PRX and requesting API...\n");
 
-    start_result = sceKernelStartModule(module_id, 0, NULL, &status, NULL);
+    api.struct_size = sizeof(PMSPApi);
+    api.api_version = PMSP_API_VERSION;
+    api.get_version = NULL;
+    api.get_status = NULL;
+    api.get_last_error = NULL;
+
+    start_result = sceKernelStartModule(
+        module_id,
+        sizeof(api),
+        &api,
+        &status,
+        NULL
+    );
+
     if (start_result < 0) {
         pspDebugScreenPrintf("FAILED: sceKernelStartModule\n");
-        pspDebugScreenPrintf("Error: 0x%08X\n", (unsigned int)start_result);
+        print_error("Error", start_result);
         sceKernelUnloadModule(module_id);
-    } else {
-        pspDebugScreenPrintf("SUCCESS: PMSP PRX started.\n");
-        pspDebugScreenPrintf("Module status: %d\n", status);
-        pspDebugScreenPrintf("\nThis is the PRX bootstrap test.\n");
-        pspDebugScreenPrintf("HTTPS support is not wired into\n");
-        pspDebugScreenPrintf("the PSP PRX yet.\n");
-        pspDebugScreenPrintf("\nPress X or O to stop and exit.");
-
+        pspDebugScreenPrintf("\nPress X or O to exit.");
         wait_for_confirm();
-        sceKernelStopModule(module_id, 0, NULL, &status, NULL);
-        sceKernelUnloadModule(module_id);
+        sceKernelExitGame();
+        return 0;
     }
 
+    pspDebugScreenPrintf("PRX started successfully.\n");
+
+    if (api.get_version == NULL ||
+        api.get_status == NULL ||
+        api.get_last_error == NULL) {
+        pspDebugScreenPrintf("FAILED: API table is incomplete.\n");
+    } else {
+        unsigned int version = api.get_version();
+
+        pspDebugScreenPrintf("\nPMSP API detected!\n");
+        pspDebugScreenPrintf("API version: %u.%u\n",
+            (version >> 16) & 0xFFFF,
+            version & 0xFFFF);
+        pspDebugScreenPrintf("API table size: %u bytes\n", api.struct_size);
+        pspDebugScreenPrintf("Status: %d\n", api.get_status());
+        pspDebugScreenPrintf("Last error: %d\n", api.get_last_error());
+
+        if (api.get_status() == PMSP_STATUS_READY &&
+            api.get_last_error() == PMSP_OK) {
+            pspDebugScreenPrintf("\nSUCCESS: PMSP API calls work.\n");
+        } else {
+            pspDebugScreenPrintf("\nFAILED: unexpected API state.\n");
+        }
+    }
+
+    pspDebugScreenPrintf("\nPress X or O to stop and exit.");
+    wait_for_confirm();
+
+    stop_result = sceKernelStopModule(module_id, 0, NULL, &status, NULL);
+    if (stop_result < 0) {
+        print_error("Warning: sceKernelStopModule", stop_result);
+    } else {
+        pspDebugScreenPrintf("\nPMSP PRX stopped.\n");
+    }
+
+    sceKernelUnloadModule(module_id);
     sceKernelExitGame();
     return 0;
 }
