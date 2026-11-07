@@ -160,7 +160,6 @@ int main(int argc, char **argv)
     int result;
     int parse_result;
     int github_tag_mode = 0;
-    int github_release_mode = 0;
     const char *request_host;
     const char *request_path;
     char *github_tag_path = NULL;
@@ -188,7 +187,6 @@ int main(int argc, char **argv)
             fprintf(stderr, "PMSP: invalid repository name.\n");
             return 2;
         }
-        github_release_mode = 1;
         request_host = "api.github.com";
         request_path = github_release_path;
     } else {
