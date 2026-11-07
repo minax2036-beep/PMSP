@@ -8,18 +8,23 @@ extern "C" {
 #endif
 
 #define PMSP_API_VERSION_MAJOR 1
-#define PMSP_API_VERSION_MINOR 0
+#define PMSP_API_VERSION_MINOR 1
 #define PMSP_API_VERSION ((PMSP_API_VERSION_MAJOR << 16) | PMSP_API_VERSION_MINOR)
 
 #define PMSP_STATUS_STOPPED 0
 #define PMSP_STATUS_READY   1
 
-#define PMSP_OK                 0
-#define PMSP_ERROR_INVALID_ARG -1
+#define PMSP_OK                  0
+#define PMSP_ERROR_INVALID_ARG  -1
+#define PMSP_ERROR_NETWORK      -2
+#define PMSP_ERROR_TLS          -3
+#define PMSP_ERROR_HTTP         -4
+#define PMSP_ERROR_IO           -5
 
 typedef unsigned int (*PMSPGetVersionFn)(void);
 typedef int (*PMSPGetStatusFn)(void);
 typedef int (*PMSPGetLastErrorFn)(void);
+typedef int (*PMSPHttpsGetFn)(const char *url, const char *output_path);
 
 typedef struct PMSPApi {
     unsigned int struct_size;
@@ -27,6 +32,7 @@ typedef struct PMSPApi {
     PMSPGetVersionFn get_version;
     PMSPGetStatusFn get_status;
     PMSPGetLastErrorFn get_last_error;
+    PMSPHttpsGetFn https_get;
 } PMSPApi;
 
 /*
@@ -34,7 +40,9 @@ typedef struct PMSPApi {
  * PMSP fills it during module_start(), allowing the caller to invoke the
  * functions after the PRX has been started.
  *
- * The same functions are also listed in exports.exp for normal PRX imports.
+ * https_get accepts an https:// URL and writes the response body to a file.
+ * The caller must initialize the PSP network stack and connect to Wi-Fi
+ * before calling it. HTTP redirects are disabled in this initial backend.
  */
 
 #ifdef __cplusplus
