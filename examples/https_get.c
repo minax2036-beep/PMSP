@@ -16,16 +16,17 @@ static void usage(const char *program)
 {
     fprintf(stderr,
         "Usage: %s <host> <path> [--output file] [--port port] [--ca-file file]\n"
+        "       %s github-tag <owner/repo> <tag> [--output file] [--ca-file file]\n"
         "       %s <host> <path> [port] [ca-file]  (legacy form)\n"
         "\n"
         "Examples:\n"
         "  %s example.com /\n"
         "  %s example.com /index.html --output index.html\n"
-        "  %s example.com / 443 /etc/ssl/certs/ca-certificates.crt\n",
-        program, program, program, program, program);
+        "  %s github-tag minax2036-beep/PMSP v0.1.0 --output PMSP-v0.1.0.zip\n",
+        program, program, program, program, program, program);
 }
 
-static int parse_arguments(int argc, char **argv,
+static int parse_arguments(int argc, char **argv, int first_option,
                            const char **output_path,
                            const char **port,
                            const char **ca_file)
@@ -37,7 +38,7 @@ static int parse_arguments(int argc, char **argv,
     *port = "443";
     *ca_file = PMSP_SYSTEM_CA_FILE;
 
-    for (i = 3; i < argc; ++i) {
+    for (i = first_option; i < argc; ++i) {
         if (strcmp(argv[i], "--output") == 0) {
             if (i + 1 >= argc || argv[i + 1][0] == '\0' || *output_path)
                 return -1;
@@ -68,6 +69,56 @@ static int parse_arguments(int argc, char **argv,
     return 0;
 }
 
+
+static int is_repo_component(const char *text, size_t length)
+{
+    size_t i;
+    if (length == 0 || (length == 1 && text[0] == '.') ||
+        (length == 2 && text[0] == '.' && text[1] == '.')) return 0;
+    for (i = 0; i < length; ++i) {
+        unsigned char c = (unsigned char)text[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.')) return 0;
+    }
+    return 1;
+}
+
+static char *make_github_tag_path(const char *repository, const char *tag)
+{
+    const char *slash;
+    size_t owner_length, repo_length, tag_length, capacity, used, i;
+    char *path;
+    static const char hex[] = "0123456789ABCDEF";
+    if (!repository || !tag || !tag[0]) return NULL;
+    slash = strchr(repository, '/');
+    if (!slash || strchr(slash + 1, '/') != NULL) return NULL;
+    owner_length = (size_t)(slash - repository);
+    repo_length = strlen(slash + 1);
+    tag_length = strlen(tag);
+    if (!is_repo_component(repository, owner_length) ||
+        !is_repo_component(slash + 1, repo_length) || tag_length > 256) return NULL;
+    if (tag_length > ((size_t)-1 - owner_length - repo_length - 64) / 3) return NULL;
+    capacity = owner_length + repo_length + tag_length * 3 + 64;
+    path = (char *)malloc(capacity);
+    if (!path) return NULL;
+    used = (size_t)snprintf(path, capacity, "/%.*s/%s/archive/refs/tags/",
+                            (int)owner_length, repository, slash + 1);
+    if (used >= capacity) { free(path); return NULL; }
+    for (i = 0; i < tag_length; ++i) {
+        unsigned char c = (unsigned char)tag[i];
+        int safe = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                   (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_' || c == '~';
+        if (safe) path[used++] = (char)c;
+        else {
+            path[used++] = '%';
+            path[used++] = hex[c >> 4];
+            path[used++] = hex[c & 15];
+        }
+    }
+    memcpy(path + used, ".zip", sizeof(".zip"));
+    return path;
+}
+
 int main(int argc, char **argv)
 {
     const char *output_path;
@@ -77,18 +128,34 @@ int main(int argc, char **argv)
     char *temporary_path = NULL;
     int result;
     int parse_result;
+    int github_tag_mode = 0;
+    const char *request_host;
+    const char *request_path;
+    char *github_tag_path = NULL;
 
     if (argc == 2 && strcmp(argv[1], "--version") == 0) {
         printf("PMSP %s\n", PMSP_VERSION);
         return 0;
     }
 
-    if (argc < 3) {
-        usage(argv[0]);
-        return 2;
+    if (argc >= 2 && strcmp(argv[1], "github-tag") == 0) {
+        if (argc < 4) { usage(argv[0]); return 2; }
+        github_tag_path = make_github_tag_path(argv[2], argv[3]);
+        if (!github_tag_path) {
+            fprintf(stderr, "PMSP: invalid repository or tag name.\\n");
+            return 2;
+        }
+        github_tag_mode = 1;
+        request_host = "github.com";
+        request_path = github_tag_path;
+    } else {
+        if (argc < 3) { usage(argv[0]); return 2; }
+        request_host = argv[1];
+        request_path = argv[2];
     }
 
-    parse_result = parse_arguments(argc, argv, &output_path, &port, &ca_file);
+    parse_result = parse_arguments(argc, argv, github_tag_mode ? 4 : 3,
+                                   &output_path, &port, &ca_file);
     if (parse_result != 0) {
         if (parse_result < 0)
             fprintf(stderr, "PMSP: invalid command-line arguments.\n");
@@ -123,8 +190,9 @@ int main(int argc, char **argv)
         fprintf(stderr, "PMSP: saving response to %s\n", output_path);
     }
 
-    result = pmsp_https_get(argv[1], port, argv[2], ca_file,
+    result = pmsp_https_get(request_host, port, request_path, ca_file,
                             write_output, out);
+    free(github_tag_path);
 
     if (fflush(out) != 0 && result == PMSP_OK)
         result = PMSP_ERR_OUTPUT;
