@@ -425,6 +425,12 @@ static int pmsp_https_get_once(const char *host, const char *port, const char *p
         goto cleanup;
     }
 
+    if (status_code < 200 || status_code >= 300) {
+        fprintf(stderr, "PMSP: server returned HTTP status %d.\\n", status_code);
+        result = PMSP_ERR_HTTP;
+        goto cleanup;
+    }
+
     fprintf(stderr, "PMSP: HTTP status %d; receiving response body...\n", status_code);
     if (chunked) {
         ret = read_chunked_body(&reader, callback, context);
