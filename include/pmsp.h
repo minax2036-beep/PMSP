@@ -17,10 +17,12 @@ enum {
     PMSP_ERR_CA_FILE = -4,
     PMSP_ERR_TLS = -5,
     PMSP_ERR_VERIFY = -6,
-    PMSP_ERR_OUTPUT = -7
+    PMSP_ERR_OUTPUT = -7,
+    PMSP_ERR_HTTP = -8
 };
 
-/* One HTTPS GET. Response bytes are streamed to callback in fixed-size chunks.
+/* One HTTPS GET. The parsed response body (not HTTP headers or chunk framing)
+ * is streamed to callback in fixed-size chunks.
  * host excludes scheme and port; path begins with '/'; NULL ca_file uses the
  * POSIX system CA bundle. This first version is POSIX-only.
  */
