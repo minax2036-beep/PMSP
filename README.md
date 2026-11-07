@@ -34,9 +34,9 @@ This is an initial backend. A successful build does not prove real-device TLS in
 ## PSP installation test
 
 1. Download `pmsp.prx` and `EBOOT.PBP` from a GitHub Release.
-2. Copy `EBOOT.PBP` to `ms0:/PSP/GAME/PMSPTEST/EBOOT.PBP`.
-3. Create `ms0:/PMSP/` and copy `pmsp.prx` there.
-4. Run **PMSP Tester**. It verifies that the HTTPS function is present in the API table.
+2. Create `ms0:/PSP/GAME/PMSP/` on the Memory Stick.
+3. Copy both `EBOOT.PBP` and `pmsp.prx` into that same folder.
+4. Run **PMSP Tester** from the `PMSP` folder. It loads `pmsp.prx` from the same directory and verifies the HTTPS API table.
 5. A separate Homebrew should initialize Wi-Fi before calling `api.https_get()`.
 
 ## Automatic builds and releases
