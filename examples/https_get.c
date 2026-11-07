@@ -17,13 +17,15 @@ static void usage(const char *program)
     fprintf(stderr,
         "Usage: %s <host> <path> [--output file] [--port port] [--ca-file file]\n"
         "       %s github-tag <owner/repo> <tag> [--output file] [--ca-file file]\n"
+        "       %s github-release <owner/repo> [--output file] [--ca-file file]\n"
         "       %s <host> <path> [port] [ca-file]  (legacy form)\n"
         "\n"
         "Examples:\n"
         "  %s example.com /\n"
         "  %s example.com /index.html --output index.html\n"
-        "  %s github-tag minax2036-beep/PMSP v0.1.0 --output PMSP-v0.1.0.zip\n",
-        program, program, program, program, program, program);
+        "  %s github-tag minax2036-beep/PMSP v0.1.0 --output PMSP-v0.1.0.zip\n"
+        "  %s github-release minax2036-beep/PMSP --output latest-release.json\n",
+        program, program, program, program, program, program, program);
 }
 
 static int parse_arguments(int argc, char **argv, int first_option,
@@ -120,6 +122,34 @@ static char *make_github_tag_path(const char *repository, const char *tag)
     return path;
 }
 
+static char *make_github_release_path(const char *repository)
+{
+    const char *slash;
+    size_t owner_length, repo_length, capacity;
+    char *path;
+
+    if (!repository) return NULL;
+    slash = strchr(repository, '/');
+    if (!slash || strchr(slash + 1, '/') != NULL) return NULL;
+
+    owner_length = (size_t)(slash - repository);
+    repo_length = strlen(slash + 1);
+    if (owner_length > 100 || repo_length > 100 ||
+        !is_repo_component(repository, owner_length) ||
+        !is_repo_component(slash + 1, repo_length)) return NULL;
+
+    capacity = owner_length + repo_length + 40;
+    path = (char *)malloc(capacity);
+    if (!path) return NULL;
+
+    if (snprintf(path, capacity, "/repos/%.*s/%s/releases/latest",
+                 (int)owner_length, repository, slash + 1) < 0) {
+        free(path);
+        return NULL;
+    }
+    return path;
+}
+
 int main(int argc, char **argv)
 {
     const char *output_path;
@@ -130,9 +160,11 @@ int main(int argc, char **argv)
     int result;
     int parse_result;
     int github_tag_mode = 0;
+    int github_release_mode = 0;
     const char *request_host;
     const char *request_path;
     char *github_tag_path = NULL;
+    char *github_release_path = NULL;
 
     if (argc == 2 && strcmp(argv[1], "--version") == 0) {
         printf("PMSP %s\n", PMSP_VERSION);
@@ -149,6 +181,16 @@ int main(int argc, char **argv)
         github_tag_mode = 1;
         request_host = "github.com";
         request_path = github_tag_path;
+    } else if (argc >= 2 && strcmp(argv[1], "github-release") == 0) {
+        if (argc < 3) { usage(argv[0]); return 2; }
+        github_release_path = make_github_release_path(argv[2]);
+        if (!github_release_path) {
+            fprintf(stderr, "PMSP: invalid repository name.\n");
+            return 2;
+        }
+        github_release_mode = 1;
+        request_host = "api.github.com";
+        request_path = github_release_path;
     } else {
         if (argc < 3) { usage(argv[0]); return 2; }
         request_host = argv[1];
@@ -194,6 +236,7 @@ int main(int argc, char **argv)
     result = pmsp_https_get(request_host, port, request_path, ca_file,
                             write_output, out);
     free(github_tag_path);
+    free(github_release_path);
 
     if (fflush(out) != 0 && result == PMSP_OK)
         result = PMSP_ERR_OUTPUT;
