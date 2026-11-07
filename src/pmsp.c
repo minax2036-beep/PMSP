@@ -215,15 +215,18 @@ static int read_chunked_body(pmsp_reader *reader,
     }
 }
 
-int pmsp_https_get(const char *host, const char *port, const char *path,
-                   const char *ca_file, pmsp_write_callback callback,
-                   void *context)
+static int pmsp_https_get_once(const char *host, const char *port, const char *path,
+                              const char *ca_file, pmsp_write_callback callback,
+                              void *context, char *redirect_location,
+                              size_t redirect_capacity)
 {
     int result = PMSP_ERR_TLS;
     int fd = -1;
     int ret;
     int verify_flags;
     int status_code = 0;
+    int is_redirect = 0;
+    int has_location = 0;
     int chunked = 0;
     int has_content_length = 0;
     uint64_t content_length = 0;
@@ -387,6 +390,15 @@ int pmsp_https_get(const char *host, const char *port, const char *path,
 
         if (strcasecmp(name, "Transfer-Encoding") == 0) {
             if (header_has_chunked_token(value)) chunked = 1;
+        } else if (strcasecmp(name, "Location") == 0) {
+            size_t location_length = strlen(value);
+            if (location_length == 0 || location_length >= redirect_capacity) {
+                fprintf(stderr, "PMSP: invalid or oversized redirect Location.\\n");
+                result = PMSP_ERR_HTTP;
+                goto cleanup;
+            }
+            memcpy(redirect_location, value, location_length + 1);
+            has_location = 1;
         } else if (strcasecmp(name, "Content-Length") == 0) {
             uint64_t parsed_length;
             if (parse_content_length(value, &parsed_length) != 0 ||
@@ -431,4 +443,198 @@ cleanup:
     mbedtls_ssl_config_free(&config);
     mbedtls_ssl_free(&ssl);
     return result;
+}
+
+
+#define PMSP_MAX_REDIRECTS 5
+#define PMSP_REDIRECT_HOST_SIZE 256
+#define PMSP_REDIRECT_PORT_SIZE 16
+#define PMSP_REDIRECT_PATH_SIZE 4096
+#define PMSP_REDIRECT_LOCATION_SIZE 4096
+
+static int starts_with_case(const char *text, const char *prefix)
+{
+    return strncasecmp(text, prefix, strlen(prefix)) == 0;
+}
+
+static int copy_url_part(char *destination, size_t capacity,
+                         const char *source, size_t length)
+{
+    if (length == 0 || length >= capacity) return -1;
+    memcpy(destination, source, length);
+    destination[length] = '\0';
+    return 0;
+}
+
+static int resolve_redirect(const char *current_host, const char *current_port,
+                            const char *current_path, const char *location,
+                            char *next_host, size_t host_capacity,
+                            char *next_port, size_t port_capacity,
+                            char *next_path, size_t path_capacity)
+{
+    const char *authority;
+    const char *path_start;
+    const char *authority_end;
+    const char *fragment;
+    const char *colon;
+    size_t authority_length;
+    size_t path_length;
+
+    if (!location || !location[0] || has_line_break(location)) return -1;
+
+    if (starts_with_case(location, "https://")) {
+        authority = location + 8;
+    } else if (starts_with_case(location, "http://")) {
+        fprintf(stderr, "PMSP: refusing HTTPS-to-HTTP redirect.\n");
+        return -1;
+    } else if (strstr(location, "://") != NULL) {
+        fprintf(stderr, "PMSP: unsupported redirect URL scheme.\n");
+        return -1;
+    } else if (location[0] == '/' && location[1] == '/') {
+        authority = location + 2;
+    } else {
+        if (strlen(current_host) >= host_capacity ||
+            strlen(current_port) >= port_capacity) return -1;
+        strcpy(next_host, current_host);
+        strcpy(next_port, current_port);
+
+        fragment = strchr(location, '#');
+        path_length = fragment ? (size_t)(fragment - location) : strlen(location);
+        if (path_length == 0) return -1;
+
+        if (location[0] == '/') {
+            return copy_url_part(next_path, path_capacity, location, path_length);
+        }
+
+        if (location[0] == '?') {
+            const char *query_base = strchr(current_path, '?');
+            size_t base_length = query_base
+                ? (size_t)(query_base - current_path) : strlen(current_path);
+            if (base_length + path_length >= path_capacity) return -1;
+            memcpy(next_path, current_path, base_length);
+            memcpy(next_path + base_length, location, path_length);
+            next_path[base_length + path_length] = '\0';
+            return 0;
+        }
+
+        {
+            const char *query = strchr(current_path, '?');
+            size_t base_length = query
+                ? (size_t)(query - current_path) : strlen(current_path);
+            const char *last_slash = NULL;
+            size_t directory_length;
+            size_t i;
+
+            for (i = 0; i < base_length; ++i)
+                if (current_path[i] == '/') last_slash = current_path + i;
+            directory_length = last_slash
+                ? (size_t)(last_slash - current_path) + 1 : 1;
+            if (directory_length + path_length >= path_capacity) return -1;
+            memcpy(next_path, current_path, directory_length);
+            memcpy(next_path + directory_length, location, path_length);
+            next_path[directory_length + path_length] = '\0';
+            return 0;
+        }
+    }
+
+    authority_end = authority;
+    while (*authority_end && *authority_end != '/' &&
+           *authority_end != '?' && *authority_end != '#')
+        ++authority_end;
+    authority_length = (size_t)(authority_end - authority);
+    if (authority_length == 0 || memchr(authority, '@', authority_length) != NULL ||
+        memchr(authority, '[', authority_length) != NULL ||
+        memchr(authority, ']', authority_length) != NULL) {
+        fprintf(stderr, "PMSP: invalid redirect authority (IPv6 literals are not supported yet).\n");
+        return -1;
+    }
+
+    colon = memchr(authority, ':', authority_length);
+    if (colon) {
+        if (copy_url_part(next_host, host_capacity, authority,
+                          (size_t)(colon - authority)) != 0 ||
+            copy_url_part(next_port, port_capacity, colon + 1,
+                          authority_length - (size_t)(colon + 1 - authority)) != 0)
+            return -1;
+    } else {
+        if (copy_url_part(next_host, host_capacity, authority, authority_length) != 0)
+            return -1;
+        strcpy(next_port, "443");
+    }
+
+    path_start = authority_end;
+    if (*path_start == '\0' || *path_start == '#') {
+        strcpy(next_path, "/");
+        return 0;
+    }
+    if (*path_start == '?') {
+        size_t query_length;
+        fragment = strchr(path_start, '#');
+        query_length = fragment ? (size_t)(fragment - path_start) : strlen(path_start);
+        if (query_length + 1 >= path_capacity) return -1;
+        next_path[0] = '/';
+        memcpy(next_path + 1, path_start, query_length);
+        next_path[query_length + 1] = '\0';
+        return 0;
+    }
+    fragment = strchr(path_start, '#');
+    path_length = fragment ? (size_t)(fragment - path_start) : strlen(path_start);
+    return copy_url_part(next_path, path_capacity, path_start, path_length);
+}
+
+int pmsp_https_get(const char *host, const char *port, const char *path,
+                   const char *ca_file, pmsp_write_callback callback,
+                   void *context)
+{
+    char current_host[PMSP_REDIRECT_HOST_SIZE];
+    char current_port[PMSP_REDIRECT_PORT_SIZE];
+    char current_path[PMSP_REDIRECT_PATH_SIZE];
+    char location[PMSP_REDIRECT_LOCATION_SIZE];
+    char next_host[PMSP_REDIRECT_HOST_SIZE];
+    char next_port[PMSP_REDIRECT_PORT_SIZE];
+    char next_path[PMSP_REDIRECT_PATH_SIZE];
+    unsigned int redirects = 0;
+    int result;
+
+    if (!host || !host[0] || !path || path[0] != '/' ||
+        has_line_break(host) || has_line_break(path) ||
+        (port && has_line_break(port)) ||
+        strlen(host) >= sizeof(current_host) ||
+        strlen(port ? port : PMSP_DEFAULT_PORT) >= sizeof(current_port) ||
+        strlen(path) >= sizeof(current_path))
+        return PMSP_ERR_ARGUMENT;
+
+    strcpy(current_host, host);
+    strcpy(current_port, port ? port : PMSP_DEFAULT_PORT);
+    strcpy(current_path, path);
+
+    for (;;) {
+        location[0] = '\0';
+        result = pmsp_https_get_once(current_host, current_port, current_path,
+                                     ca_file, callback, context,
+                                     location, sizeof(location));
+        if (result != 1) return result;
+
+        if (redirects >= PMSP_MAX_REDIRECTS) {
+            fprintf(stderr, "PMSP: redirect limit (%u) exceeded.\n",
+                    PMSP_MAX_REDIRECTS);
+            return PMSP_ERR_HTTP;
+        }
+
+        if (resolve_redirect(current_host, current_port, current_path, location,
+                             next_host, sizeof(next_host),
+                             next_port, sizeof(next_port),
+                             next_path, sizeof(next_path)) != 0) {
+            fprintf(stderr, "PMSP: could not resolve redirect Location.\n");
+            return PMSP_ERR_HTTP;
+        }
+
+        ++redirects;
+        fprintf(stderr, "PMSP: following redirect %u/%u to https://%s:%s%s\n",
+                redirects, PMSP_MAX_REDIRECTS,
+                next_host, next_port, next_path);
+        strcpy(current_host, next_host);
+        strcpy(current_port, next_port);
+        strcpy(current_path, next_path);
+    }
 }
