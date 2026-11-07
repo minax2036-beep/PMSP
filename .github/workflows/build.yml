@@ -23,3 +23,8 @@ jobs:
         run: cmake --build build --parallel 2
       - name: Check executable
         run: ./build/pmsp-get --version
+      - name: HTTPS smoke test
+        run: |
+          ./build/pmsp-get example.com / > response.txt
+          head -n 20 response.txt
+          grep -q "HTTP/" response.txt
