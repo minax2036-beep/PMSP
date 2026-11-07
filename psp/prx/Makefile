@@ -9,4 +9,6 @@ ASFLAGS = $(CFLAGS)
 
 EXTRA_TARGETS = $(TARGET).prx
 
+PSPSDK = $(shell psp-config --pspsdk-path)
+
 include $(PSPSDK)/lib/build.mak
