@@ -23,6 +23,28 @@ the PSP networking API. The initial PRX does not provide the HTTPS API yet.
 The next porting step is to add the PSP network transport and integrate
 Mbed TLS, then expose a stable PRX API to other Homebrew applications.
 
+## PMSP PRX API (v1.0)
+
+The PSP PRX exports the `PMSP` library functions:
+
+- `pmspGetVersion()` — returns the API version as major/minor in a 32-bit value.
+- `pmspGetStatus()` — returns the current module status.
+- `pmspGetLastError()` — returns the most recent PMSP error code.
+
+The public C header is `psp/include/pmsp_api.h`.
+
+For a dynamically loaded PRX, the application passes a `PMSPApi` structure
+to `sceKernelStartModule()`. The PRX fills that structure with callable
+function pointers during `module_start()`. This avoids requiring the
+application's imports to be resolved before it has loaded the PRX.
+
+The Tester demonstrates this startup API-table handshake and calls all
+three functions. The exported NIDs are also declared in
+`psp/prx/exports.exp` for applications that use normal PSPSDK PRX imports.
+
+The current API is a bootstrap interface only. HTTPS operations will be
+added after the PSP networking and TLS backends are ported.
+
 ## PSP installation test
 
 1. Download `pmsp.prx` and `EBOOT.PBP` from a GitHub Release.
