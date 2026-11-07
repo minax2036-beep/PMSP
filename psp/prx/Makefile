@@ -9,6 +9,7 @@ INCDIR = ../include
 CFLAGS = -O2 -G0 -Wall -Wextra
 ASFLAGS = $(CFLAGS)
 LDFLAGS = -nostartfiles
+NO_FIXUP_IMPORTS = 1
 
 EXTRA_TARGETS = $(TARGET).prx
 
