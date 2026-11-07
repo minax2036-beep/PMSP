@@ -3,6 +3,7 @@ name: PMSP Build
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -36,3 +37,48 @@ jobs:
         run: |
           ./build/pmsp-get httpbin.org /redirect/1 > redirect-response.txt
           grep -q '"url"' redirect-response.txt
+
+  psp-build:
+    runs-on: ubuntu-24.04
+    container:
+      image: pspdev/pspdev:latest
+    steps:
+      - name: Check out PMSP
+        uses: actions/checkout@v4
+      - name: Build PMSP PRX
+        run: make -C psp/prx
+      - name: Build PMSP Tester EBOOT.PBP
+        run: make -C psp/tester
+      - name: Collect PSP release files
+        run: |
+          mkdir -p dist
+          cp psp/prx/pmsp.prx dist/pmsp.prx
+          cp psp/tester/EBOOT.PBP dist/EBOOT.PBP
+          ls -lh dist
+      - name: Upload PSP build
+        uses: actions/upload-artifact@v4
+        with:
+          name: pmsp-psp-build
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux-x86_64, psp-build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download PSP build
+        uses: actions/download-artifact@v4
+        with:
+          name: pmsp-psp-build
+          path: dist
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/pmsp.prx
+            dist/EBOOT.PBP
+          fail_on_unmatched_files: true
