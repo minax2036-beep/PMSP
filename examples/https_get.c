@@ -95,8 +95,9 @@ static char *make_github_tag_path(const char *repository, const char *tag)
     owner_length = (size_t)(slash - repository);
     repo_length = strlen(slash + 1);
     tag_length = strlen(tag);
-    if (!is_repo_component(repository, owner_length) ||
-        !is_repo_component(slash + 1, repo_length) || tag_length > 256) return NULL;
+    if (owner_length > 100 || repo_length > 100 || tag_length > 256 ||
+        !is_repo_component(repository, owner_length) ||
+        !is_repo_component(slash + 1, repo_length)) return NULL;
     if (tag_length > ((size_t)-1 - owner_length - repo_length - 64) / 3) return NULL;
     capacity = owner_length + repo_length + tag_length * 3 + 64;
     path = (char *)malloc(capacity);
@@ -142,7 +143,7 @@ int main(int argc, char **argv)
         if (argc < 4) { usage(argv[0]); return 2; }
         github_tag_path = make_github_tag_path(argv[2], argv[3]);
         if (!github_tag_path) {
-            fprintf(stderr, "PMSP: invalid repository or tag name.\\n");
+            fprintf(stderr, "PMSP: invalid repository or tag name.\n");
             return 2;
         }
         github_tag_mode = 1;
