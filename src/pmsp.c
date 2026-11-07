@@ -426,7 +426,7 @@ static int pmsp_https_get_once(const char *host, const char *port, const char *p
     }
 
     if (status_code < 200 || status_code >= 300) {
-        fprintf(stderr, "PMSP: server returned HTTP status %d.\\n", status_code);
+        fprintf(stderr, "PMSP: server returned HTTP status %d.\n", status_code);
         result = PMSP_ERR_HTTP;
         goto cleanup;
     }
