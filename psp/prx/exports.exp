@@ -1,0 +1,15 @@
+PSP_BEGIN_EXPORTS
+
+PSP_EXPORT_START(syslib, 0, 0x8000)
+    PSP_EXPORT_FUNC(module_start)
+    PSP_EXPORT_FUNC(module_stop)
+    PSP_EXPORT_VAR(module_info)
+PSP_EXPORT_END
+
+PSP_EXPORT_START(PMSP, 1, 0x0001)
+    PSP_EXPORT_FUNC(pmspGetVersion)
+    PSP_EXPORT_FUNC(pmspGetStatus)
+    PSP_EXPORT_FUNC(pmspGetLastError)
+PSP_EXPORT_END
+
+PSP_END_EXPORTS
