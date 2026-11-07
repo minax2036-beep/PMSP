@@ -26,8 +26,12 @@ jobs:
       - name: HTTPS smoke test
         run: |
           ./build/pmsp-get example.com / > response.txt
-          cat response.txt
           grep -q "Example Domain" response.txt
+      - name: HTTPS download test
+        run: |
+          ./build/pmsp-get example.com / --output example.html
+          test -s example.html
+          grep -q "Example Domain" example.html
       - name: HTTPS redirect test
         run: |
           ./build/pmsp-get httpbin.org /redirect/1 > redirect-response.txt
