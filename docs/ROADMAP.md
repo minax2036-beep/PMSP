@@ -19,12 +19,12 @@ Initial size goals:
 - [x] Basic HTTP/1.1 GET.
 - [x] Stream response bytes to a fixed-size buffer callback.
 - [ ] Verify GitHub Actions build.
-- [ ] Test HTTPS GET from Chromebook Linux.
+- [x] Test HTTPS GET from Chromebook Linux.
 
 ## Phase 2: HTTP and GitHub
 
-- [ ] Parse HTTP status and headers.
-- [ ] Support Content-Length and chunked transfer encoding.
+- [x] Parse HTTP status and headers.
+- [x] Support Content-Length and chunked transfer encoding.
 - [ ] Follow redirects with a safe redirect limit.
 - [ ] Stream response bodies to files in chunks.
 - [ ] GitHub RAW support.
