@@ -11,7 +11,7 @@ The first goal is to make an HTTPS GET request from Chromebook Linux using
 PMSP's own TLS and HTTP code.
 
 - TCP: POSIX sockets (initial development platform)
-- TLS: Mbed TLS 4.1.1
+- TLS: Mbed TLS 3.6.3
 - Verification: CA chain and hostname verification are required
 - HTTP: basic HTTP/1.1 GET
 - Response: parses status and headers; streams the response body in fixed-size chunks; decodes chunked transfer encoding
