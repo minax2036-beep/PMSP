@@ -1,2 +1,2 @@
-# PSMP
+# PMSP
 pspでhppts通信だぞぉぉぉぉぉ！！！
