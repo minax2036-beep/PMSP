@@ -20,7 +20,7 @@ FetchContent_MakeAvailable(mbedtls)
 
 add_library(pmsp STATIC src/pmsp.c src/platform/posix/net.c)
 target_include_directories(pmsp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(pmsp PUBLIC mbedtls mbedx509 tfpsacrypto)
+target_link_libraries(pmsp PUBLIC mbedtls mbedx509 mbedcrypto)
 if(UNIX)
     target_compile_options(pmsp PRIVATE -Wall -Wextra -Wpedantic)
 endif()
