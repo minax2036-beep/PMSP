@@ -26,5 +26,5 @@ jobs:
       - name: HTTPS smoke test
         run: |
           ./build/pmsp-get example.com / > response.txt
-          head -n 20 response.txt
-          grep -q "HTTP/" response.txt
+          cat response.txt
+          grep -q "Example Domain" response.txt
