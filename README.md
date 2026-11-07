@@ -59,6 +59,18 @@ Tag characters outside the URL-unreserved set are percent-encoded. Non-2xx
 HTTP responses, including an unknown tag (404), are treated as errors and the
 temporary output file is discarded.
 
+Retrieve metadata for the latest published GitHub Release:
+
+    ./build/pmsp-get github-release minax2036-beep/PMSP --output latest-release.json
+
+This requests the GitHub REST API endpoint
+`/repos/OWNER/REPO/releases/latest` and streams the returned
+JSON to the output file. The endpoint returns the latest published full release
+(excluding drafts and prereleases). The JSON includes the release name, tag,
+publication information, and the `assets` array. This command
+currently saves the raw JSON; parsing asset names and downloading individual
+assets are planned follow-up features.
+
 Optional arguments:
 
     pmsp-get <host> <path> [--output file] [--port port] [--ca-file file]
