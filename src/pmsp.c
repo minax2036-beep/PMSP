@@ -393,7 +393,7 @@ static int pmsp_https_get_once(const char *host, const char *port, const char *p
         } else if (strcasecmp(name, "Location") == 0) {
             size_t location_length = strlen(value);
             if (location_length == 0 || location_length >= redirect_capacity) {
-                fprintf(stderr, "PMSP: invalid or oversized redirect Location.\\n");
+                fprintf(stderr, "PMSP: invalid or oversized redirect Location.\n");
                 result = PMSP_ERR_HTTP;
                 goto cleanup;
             }
@@ -410,6 +410,19 @@ static int pmsp_https_get_once(const char *host, const char *port, const char *p
             content_length = parsed_length;
             has_content_length = 1;
         }
+    }
+
+    is_redirect = (status_code == 301 || status_code == 302 || status_code == 303 ||
+                   status_code == 307 || status_code == 308);
+    if (is_redirect) {
+        if (!has_location) {
+            fprintf(stderr, "PMSP: redirect response has no Location header.\n");
+            result = PMSP_ERR_HTTP;
+            goto cleanup;
+        }
+        fprintf(stderr, "PMSP: HTTP redirect %d -> %s\n", status_code, redirect_location);
+        result = 1; /* Internal signal: follow redirect. */
+        goto cleanup;
     }
 
     fprintf(stderr, "PMSP: HTTP status %d; receiving response body...\n", status_code);
