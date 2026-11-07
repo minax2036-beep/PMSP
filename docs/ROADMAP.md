@@ -25,7 +25,7 @@ Initial size goals:
 
 - [x] Parse HTTP status and headers.
 - [x] Support Content-Length and chunked transfer encoding.
-- [ ] Follow redirects with a safe redirect limit.
+- [x] Follow 301/302/303/307/308 redirects with a five-hop limit; reject HTTPS downgrade.
 - [ ] Stream response bodies to files in chunks.
 - [ ] GitHub RAW support.
 - [ ] GitHub Releases and Release Assets support.
@@ -48,7 +48,7 @@ Initial size goals:
 
 ## Current limitations
 
-The first version is POSIX-only. It prints the raw HTTP response, including
-headers. Redirects, HTTP parsing, chunked decoding, and file downloads are
-not implemented yet. The default system CA bundle path is
+The first version is POSIX-only. It parses HTTP status and headers, decodes
+chunked bodies, and follows a maximum of five HTTPS redirects. File downloads
+are not implemented yet. The default system CA bundle path is
 /etc/ssl/certs/ca-certificates.crt.
