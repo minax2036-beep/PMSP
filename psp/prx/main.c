@@ -6,20 +6,13 @@ PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER);
 /*
  * Initial PRX bootstrap.
  *
- * The HTTPS implementation is still POSIX-only. This module establishes
- * the PSP PRX build/load lifecycle; the PSP networking and Mbed TLS port
- * will be integrated in a later step.
+ * The PSPSDK PRX startup code provides module_start/module_stop and calls
+ * main(). The HTTPS implementation is still POSIX-only; this module only
+ * establishes the PSP PRX build/load lifecycle for now.
  */
-int module_start(SceSize args, void *argp)
+int main(int argc, char *argv[])
 {
-    (void)args;
-    (void)argp;
-    return 0;
-}
-
-int module_stop(SceSize args, void *argp)
-{
-    (void)args;
-    (void)argp;
+    (void)argc;
+    (void)argv;
     return 0;
 }
