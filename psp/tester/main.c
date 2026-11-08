@@ -1,8 +1,8 @@
 #include <pspkernel.h>
 #include <pspsdk.h>
+#include <pspsysmem.h>
 #include <pspdebug.h>
 #include <pspctrl.h>
-#include <psputility.h>
 #include <psputility_netmodules.h>
 #include "pmsp_api.h"
 
@@ -12,12 +12,18 @@ PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER);
 #define PMSP_PRX_PATH "ms0:/PSP/GAME/PMSP/pmsp.prx"
 
 static const char *g_stage = "Startup";
+static SceSize g_user_free_before;
+static SceSize g_user_free_after_prx;
+static SceSize g_user_free_after_unload;
+static SceSize g_user_free_after_modules;
+static int g_inet_initialized;
 
 static int exit_callback(int arg1, int arg2, void *common)
 {
     (void)arg1;
     (void)arg2;
     (void)common;
+
     sceKernelExitGame();
     return 0;
 }
@@ -71,25 +77,45 @@ static void wait_for_cross(void)
     }
 }
 
-static void show_result(const char *title, int result)
+static void show_result(int result)
 {
     pspDebugScreenClear();
     pspDebugScreenSetXY(0, 0);
-    pspDebugScreenPrintf("PMSP - MINIMAL NET TEST\n");
+    pspDebugScreenPrintf("PMSP - MEMORY / NET TEST\n");
     pspDebugScreenPrintf("------------------------------\n\n");
     pspDebugScreenPrintf("Stage: %s\n", g_stage);
     pspDebugScreenPrintf("Result: 0x%08X\n\n", (unsigned int)result);
 
+    pspDebugScreenPrintf("User free memory (bytes):\n");
+    pspDebugScreenPrintf("Before PRX: %u\n", (unsigned int)g_user_free_before);
+    pspDebugScreenPrintf("After PRX:  %u\n", (unsigned int)g_user_free_after_prx);
+    pspDebugScreenPrintf("After unload: %u\n", (unsigned int)g_user_free_after_unload);
+    pspDebugScreenPrintf("After modules: %u\n\n", (unsigned int)g_user_free_after_modules);
+
+    pspDebugScreenPrintf("Kernel free: %u bytes\n",
+        (unsigned int)sceKernelTotalFreeMemSize());
+    pspDebugScreenPrintf("Kernel largest block: %u bytes\n\n",
+        (unsigned int)sceKernelMaxFreeMemSize());
+
     if (result < 0) {
-        pspDebugScreenPrintf("NETWORK INIT FAILED\n");
-        pspDebugScreenPrintf("The failing stage is shown above.\n\n");
+        pspDebugScreenPrintf("TEST FAILED\n");
     } else {
         pspDebugScreenPrintf("NETWORK INIT SUCCESS\n");
-        pspDebugScreenPrintf("PSPSDK pspSdkInetInit() returned 0.\n\n");
+        pspDebugScreenPrintf("pspSdkInetInit() returned 0.\n");
     }
 
-    pspDebugScreenPrintf("X: Exit test\n");
+    pspDebugScreenPrintf("\nX: Exit test\n");
     pspDebugScreenPrintf("HOME: PSP system menu\n");
+}
+
+static void unload_net_modules(int inet_loaded, int common_loaded)
+{
+    if (inet_loaded) {
+        sceUtilityUnloadNetModule(PSP_NET_MODULE_INET);
+    }
+    if (common_loaded) {
+        sceUtilityUnloadNetModule(PSP_NET_MODULE_COMMON);
+    }
 }
 
 int main(void)
@@ -98,90 +124,103 @@ int main(void)
     int result;
     int status = 0;
     int stop_result;
+    int common_loaded = 0;
+    int inet_loaded = 0;
 
     sceCtrlSetSamplingCycle(0);
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_DIGITAL);
     pspDebugScreenInit();
     setup_callbacks();
 
-    pspDebugScreenPrintf("PMSP - MINIMAL NET TEST\n");
+    g_user_free_before = pspSdkTotalFreeUserMemSize();
+
+    pspDebugScreenPrintf("PMSP - MEMORY / NET TEST\n");
     pspDebugScreenPrintf("------------------------------\n");
-
-    g_stage = "Load NET_MODULE_COMMON";
-    pspDebugScreenPrintf("Loading COMMON...\n");
-    result = sceUtilityLoadNetModule(PSP_NET_MODULE_COMMON);
-    if (result < 0) {
-        show_result(g_stage, result);
-        for (;;) wait_for_cross();
-    }
-
-    g_stage = "Load NET_MODULE_INET";
-    pspDebugScreenPrintf("Loading INET...\n");
-    result = sceUtilityLoadNetModule(PSP_NET_MODULE_INET);
-    if (result < 0) {
-        sceUtilityUnloadNetModule(PSP_NET_MODULE_COMMON);
-        show_result(g_stage, result);
-        for (;;) wait_for_cross();
-    }
+    pspDebugScreenPrintf("User free before PRX: %u bytes\n",
+        (unsigned int)g_user_free_before);
+    pspDebugScreenPrintf("Loading PMSP before network modules...\n");
 
     /*
-     * Deliberately load and immediately unload PMSP.
-     * The network initialization test then runs with no PMSP PRX active.
+     * Phase 1: test the PRX with no network modules loaded.
+     * This reverses the previous experiment's order.
      */
-    g_stage = "Load PMSP PRX";
-    pspDebugScreenPrintf("Loading PMSP PRX...\n");
+    g_stage = "sceKernelLoadModule(PMSP)";
     module_id = sceKernelLoadModule(PMSP_PRX_PATH, 0, NULL);
     if (module_id < 0) {
-        sceUtilityUnloadNetModule(PSP_NET_MODULE_INET);
-        sceUtilityUnloadNetModule(PSP_NET_MODULE_COMMON);
-        show_result(g_stage, module_id);
-        for (;;) wait_for_cross();
+        result = module_id;
+        goto finished;
     }
 
-    g_stage = "Start PMSP PRX";
+    g_stage = "sceKernelStartModule(PMSP)";
     result = sceKernelStartModule(module_id, 0, NULL, &status, NULL);
     if (result < 0) {
         sceKernelUnloadModule(module_id);
-        sceUtilityUnloadNetModule(PSP_NET_MODULE_INET);
-        sceUtilityUnloadNetModule(PSP_NET_MODULE_COMMON);
-        show_result(g_stage, result);
-        for (;;) wait_for_cross();
+        goto finished;
     }
 
-    g_stage = "Stop PMSP PRX";
+    g_user_free_after_prx = pspSdkTotalFreeUserMemSize();
+
+    g_stage = "sceKernelStopModule(PMSP)";
     stop_result = sceKernelStopModule(module_id, 0, NULL, &status, NULL);
     if (stop_result < 0) {
-        sceUtilityUnloadNetModule(PSP_NET_MODULE_INET);
-        sceUtilityUnloadNetModule(PSP_NET_MODULE_COMMON);
-        show_result(g_stage, stop_result);
-        for (;;) wait_for_cross();
+        result = stop_result;
+        goto finished;
     }
 
-    g_stage = "Unload PMSP PRX";
+    g_stage = "sceKernelUnloadModule(PMSP)";
     result = sceKernelUnloadModule(module_id);
     if (result < 0) {
-        sceUtilityUnloadNetModule(PSP_NET_MODULE_INET);
-        sceUtilityUnloadNetModule(PSP_NET_MODULE_COMMON);
-        show_result(g_stage, result);
-        for (;;) wait_for_cross();
+        goto finished;
     }
 
+    g_user_free_after_unload = pspSdkTotalFreeUserMemSize();
+
     /*
-     * This is the PSPSDK helper used by its own networking samples.
-     * The PRX has already been stopped and unloaded at this point.
+     * Phase 2: only after PMSP has been stopped and unloaded,
+     * load the official network modules.
+     */
+    g_stage = "sceUtilityLoadNetModule(COMMON)";
+    result = sceUtilityLoadNetModule(PSP_NET_MODULE_COMMON);
+    if (result < 0) {
+        goto finished;
+    }
+    common_loaded = 1;
+
+    g_stage = "sceUtilityLoadNetModule(INET)";
+    result = sceUtilityLoadNetModule(PSP_NET_MODULE_INET);
+    if (result < 0) {
+        goto finished;
+    }
+    inet_loaded = 1;
+
+    g_user_free_after_modules = pspSdkTotalFreeUserMemSize();
+
+    /*
+     * Phase 3: run the PSPSDK Internet initialization helper.
+     * Do not open Netconf or attempt HTTPS in this diagnostic build.
      */
     g_stage = "pspSdkInetInit";
     result = pspSdkInetInit();
+    if (result == 0) {
+        g_inet_initialized = 1;
+    }
 
-    show_result(g_stage, result);
+finished:
+    if (result < 0) {
+        /* Preserve the failing stage and error code on screen. */
+        unload_net_modules(inet_loaded, common_loaded);
+    }
 
-    /* This diagnostic build intentionally does not open Netconf or HTTPS.
-       It isolates the SDK network initialization call only. */
+    show_result(result);
+
     for (;;) {
         wait_for_cross();
-        pspSdkInetTerm();
-        sceUtilityUnloadNetModule(PSP_NET_MODULE_INET);
-        sceUtilityUnloadNetModule(PSP_NET_MODULE_COMMON);
+
+        if (g_inet_initialized) {
+            pspSdkInetTerm();
+            g_inet_initialized = 0;
+        }
+        unload_net_modules(inet_loaded, common_loaded);
         sceKernelExitGame();
     }
 
