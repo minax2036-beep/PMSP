@@ -9,7 +9,7 @@ CXXFLAGS = $(CFLAGS)
 ASFLAGS = $(CFLAGS)
 LIBDIR =
 LDFLAGS =
-LIBS = -lpspdebug -lpspctrl -lpsputility -lpspsdk -lpspnet_apctl -lpspnet_inet -lpspnet
+LIBS = -lpspdebug -lpspctrl -lpsputility -lpspsdk -lpspnet_apctl -lpspnet_inet -lpspnet -lpspgum -lpspgu
 
 EXTRA_TARGETS = EBOOT.PBP
 PSP_EBOOT_TITLE = PMSP Net Init Test
