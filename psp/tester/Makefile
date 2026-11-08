@@ -1,3 +1,5 @@
+.DEFAULT_GOAL := all
+
 TARGET = pmsp_tester
 OBJS = main.o PMSP.o
 
