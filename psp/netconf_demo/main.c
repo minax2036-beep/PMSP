@@ -22,6 +22,12 @@
 PSP_MODULE_INFO("PMSP Netconf Demo", PSP_MODULE_USER, 1, 0);
 PSP_NO_CREATE_MAIN_THREAD();
 
+/* Newlib abort path for this thread-based PRX (no process-level _exit). */
+void _exit(int status)
+{
+    sceKernelExitDeleteThread(status);
+}
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
