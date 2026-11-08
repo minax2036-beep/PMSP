@@ -11,7 +11,7 @@
 #include <pspgum.h>
 #include <psputility.h>
 #include <psputility_netconf.h>
-#include <psputility_modules.h>
+#include <psputility_netmodules.h>
 #include <pspnet.h>
 #include <pspnet_inet.h>
 #include <pspnet_apctl.h>
@@ -170,38 +170,21 @@ static void draw_demo_frame(void)
     value++;
 }
 
-static int load_net_module(int module, const char *stage)
-{
-    int result;
-
-    g_error_stage = stage;
-    result = sceUtilityLoadModule(module);
-
-    /*
-     * A module may already have been loaded by the system or another
-     * component. Treat that documented status as success.
-     */
-    if (result == SCE_ERROR_MODULE_ALREADY_LOADED)
-        return 0;
-
-    return result;
-}
-
 static int initialize_network(void)
 {
     int result;
 
     /*
-     * Use the newer PSPSDK user-mode module API. Its network module IDs
-     * are 0x100 (COMMON) and 0x102 (INET).
+     * Follow the official PSPSDK netdialog sample exactly:
+     * load COMMON first, then INET, through sceUtilityLoadNetModule.
      */
-    result = load_net_module(
-        PSP_MODULE_NET_COMMON, "sceUtilityLoadModule(COMMON)");
+    g_error_stage = "sceUtilityLoadNetModule(COMMON)";
+    result = sceUtilityLoadNetModule(PSP_NET_MODULE_COMMON);
     if (result < 0)
         return result;
 
-    result = load_net_module(
-        PSP_MODULE_NET_INET, "sceUtilityLoadModule(INET)");
+    g_error_stage = "sceUtilityLoadNetModule(INET)";
+    result = sceUtilityLoadNetModule(PSP_NET_MODULE_INET);
     if (result < 0)
         return result;
 
