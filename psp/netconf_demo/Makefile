@@ -9,7 +9,7 @@ CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
 ASFLAGS = $(CFLAGS)
 LIBDIR =
 LDFLAGS =
-LIBS = -lpsputility -lpspsdk -lpspnet_apctl -lpspnet_inet -lpspnet -lpspgum -lpspgu
+LIBS = -lpspdebug -lpsputility -lpspsdk -lpspnet_apctl -lpspnet_inet -lpspnet -lpspgum -lpspgu
 
 EXTRA_TARGETS = $(TARGET).prx
 PSP_EBOOT_TITLE = PMSP Netconf Demo PRX
