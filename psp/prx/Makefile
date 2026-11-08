@@ -1,5 +1,5 @@
 TARGET = pmsp
-OBJS = main.o https.o
+OBJS = main.o api.o https.o
 
 BUILD_PRX = 1
 PRX_EXPORTS = exports.exp
