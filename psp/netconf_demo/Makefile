@@ -8,7 +8,7 @@ CFLAGS = -O2 -G0 -Wall -Wextra
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
 ASFLAGS = $(CFLAGS)
 LIBDIR =
-LDFLAGS =
+LDFLAGS = -nostartfiles
 LIBS = -lpspdebug -lpsputility -lpspsdk -lpspnet_apctl -lpspnet_inet -lpspnet -lpspgum -lpspgu
 
 EXTRA_TARGETS = $(TARGET).prx
