@@ -1,22 +1,21 @@
 #include <pspkernel.h>
-#include <pspsdk.h>
-#include <pspsysmem.h>
-#include <pspdebug.h>
 #include <pspctrl.h>
+#include <pspdebug.h>
+#include <pspdisplay.h>
+#include <psputility.h>
+#include <psputility_netconf.h>
 #include <psputility_netmodules.h>
-#include "pmsp_api.h"
+#include <string.h>
 
-PSP_MODULE_INFO("PMSP Net Init Test", PSP_MODULE_USER, 1, 0);
+PSP_MODULE_INFO("PMSP Tester", PSP_MODULE_USER, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER);
 
-#define PMSP_PRX_PATH "ms0:/PSP/GAME/PMSP/pmsp.prx"
+static pspUtilityNetconfData g_netconf;
+static pspUtilityNetconfAdhoc g_adhoc;
 
-static const char *g_stage = "Startup";
-static SceSize g_user_free_before;
-static SceSize g_user_free_after_prx;
-static SceSize g_user_free_after_unload;
-static SceSize g_user_free_after_modules;
-static int g_inet_initialized;
+static int g_common_loaded;
+static int g_inet_loaded;
+static int g_last_error;
 
 static int exit_callback(int arg1, int arg2, void *common)
 {
@@ -37,6 +36,7 @@ static int callback_thread(SceSize args, void *argp)
 
     callback_id = sceKernelCreateCallback(
         "PMSP Exit Callback", exit_callback, NULL);
+
     if (callback_id >= 0) {
         sceKernelRegisterExitCallback(callback_id);
     }
@@ -60,168 +60,147 @@ static void setup_callbacks(void)
     }
 }
 
-static unsigned int read_buttons(void)
+static int load_network_modules(void)
 {
-    SceCtrlData pad;
-    sceCtrlReadBufferPositive(&pad, 1);
-    return pad.Buttons;
+    int result;
+
+    if (!g_common_loaded) {
+        result = sceUtilityLoadNetModule(PSP_NET_MODULE_COMMON);
+        if (result < 0) {
+            return result;
+        }
+        g_common_loaded = 1;
+    }
+
+    if (!g_inet_loaded) {
+        result = sceUtilityLoadNetModule(PSP_NET_MODULE_INET);
+        if (result < 0) {
+            return result;
+        }
+        g_inet_loaded = 1;
+    }
+
+    return 0;
 }
 
-static void wait_for_cross(void)
+static int open_wifi_dialog(void)
 {
-    while (!(read_buttons() & PSP_CTRL_CROSS)) {
-        sceKernelDelayThreadCB(10000);
+    int result;
+    int finished = 0;
+
+    result = load_network_modules();
+    if (result < 0) {
+        return result;
     }
-    while (read_buttons() & PSP_CTRL_CROSS) {
-        sceKernelDelayThreadCB(10000);
+
+    memset(&g_netconf, 0, sizeof(g_netconf));
+    memset(&g_adhoc, 0, sizeof(g_adhoc));
+
+    g_netconf.base.size = sizeof(g_netconf);
+    g_netconf.base.language = PSP_SYSTEMPARAM_LANGUAGE_DEFAULT;
+    g_netconf.base.buttonSwap = PSP_UTILITY_ACCEPT_CROSS;
+    g_netconf.base.graphicsThread = 17;
+    g_netconf.base.accessThread = 19;
+    g_netconf.base.fontThread = 18;
+    g_netconf.base.soundThread = 16;
+    g_netconf.action = PSP_NETCONF_ACTION_CONNECTAP;
+    g_netconf.adhocparam = &g_adhoc;
+
+    result = sceUtilityNetconfInitStart(&g_netconf);
+    if (result < 0) {
+        return result;
     }
+
+    while (!finished) {
+        int status = sceUtilityNetconfGetStatus();
+
+        switch (status) {
+        case PSP_UTILITY_DIALOG_VISIBLE:
+            result = sceUtilityNetconfUpdate(1);
+            if (result < 0) {
+                return result;
+            }
+            break;
+
+        case PSP_UTILITY_DIALOG_QUIT:
+            result = sceUtilityNetconfShutdownStart();
+            if (result < 0) {
+                return result;
+            }
+            break;
+
+        case PSP_UTILITY_DIALOG_FINISHED:
+            finished = 1;
+            break;
+
+        case PSP_UTILITY_DIALOG_NONE:
+        case PSP_UTILITY_DIALOG_INIT:
+        default:
+            break;
+        }
+
+        sceDisplayWaitVblankStart();
+        sceKernelDelayThread(1000);
+    }
+
+    return 0;
 }
 
-static void show_result(int result)
+static void show_tester_screen(void)
 {
     pspDebugScreenClear();
     pspDebugScreenSetXY(0, 0);
-    pspDebugScreenPrintf("PMSP - MEMORY / NET TEST\n");
+
+    pspDebugScreenPrintf("PMSP TESTER\n");
     pspDebugScreenPrintf("------------------------------\n\n");
-    pspDebugScreenPrintf("Stage: %s\n", g_stage);
-    pspDebugScreenPrintf("Result: 0x%08X\n\n", (unsigned int)result);
-
-    pspDebugScreenPrintf("User free memory (bytes):\n");
-    pspDebugScreenPrintf("Before PRX: %u\n", (unsigned int)g_user_free_before);
-    pspDebugScreenPrintf("After PRX:  %u\n", (unsigned int)g_user_free_after_prx);
-    pspDebugScreenPrintf("After unload: %u\n", (unsigned int)g_user_free_after_unload);
-    pspDebugScreenPrintf("After modules: %u\n\n", (unsigned int)g_user_free_after_modules);
-
-    pspDebugScreenPrintf("Kernel free: %u bytes\n",
-        (unsigned int)sceKernelTotalFreeMemSize());
-    pspDebugScreenPrintf("Kernel largest block: %u bytes\n\n",
-        (unsigned int)sceKernelMaxFreeMemSize());
-
-    if (result < 0) {
-        pspDebugScreenPrintf("TEST FAILED\n");
-    } else {
-        pspDebugScreenPrintf("NETWORK INIT SUCCESS\n");
-        pspDebugScreenPrintf("pspSdkInetInit() returned 0.\n");
-    }
-
-    pspDebugScreenPrintf("\nX: Exit test\n");
-    pspDebugScreenPrintf("HOME: PSP system menu\n");
-}
-
-static void unload_net_modules(int inet_loaded, int common_loaded)
-{
-    if (inet_loaded) {
-        sceUtilityUnloadNetModule(PSP_NET_MODULE_INET);
-    }
-    if (common_loaded) {
-        sceUtilityUnloadNetModule(PSP_NET_MODULE_COMMON);
-    }
+    pspDebugScreenPrintf("Wi-Fi setup dialog has returned.\n\n");
+    pspDebugScreenPrintf("CROSS: Open Wi-Fi settings again\n");
+    pspDebugScreenPrintf("HOME: PSP system exit menu\n");
 }
 
 int main(void)
 {
-    SceUID module_id;
-    int result;
-    int status = 0;
-    int stop_result;
-    int common_loaded = 0;
-    int inet_loaded = 0;
+    SceCtrlData pad;
+    int previous_buttons = 0;
 
     sceCtrlSetSamplingCycle(0);
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_DIGITAL);
+
     pspDebugScreenInit();
     setup_callbacks();
 
-    g_user_free_before = pspSdkTotalFreeUserMemSize();
-
-    pspDebugScreenPrintf("PMSP - MEMORY / NET TEST\n");
+    pspDebugScreenPrintf("PMSP TESTER\n");
     pspDebugScreenPrintf("------------------------------\n");
-    pspDebugScreenPrintf("User free before PRX: %u bytes\n",
-        (unsigned int)g_user_free_before);
-    pspDebugScreenPrintf("Loading PMSP before network modules...\n");
+    pspDebugScreenPrintf("Opening PSP Wi-Fi settings...\n");
 
-    /*
-     * Phase 1: test the PRX with no network modules loaded.
-     * This reverses the previous experiment's order.
-     */
-    g_stage = "sceKernelLoadModule(PMSP)";
-    module_id = sceKernelLoadModule(PMSP_PRX_PATH, 0, NULL);
-    if (module_id < 0) {
-        result = module_id;
-        goto finished;
+    g_last_error = open_wifi_dialog();
+
+    show_tester_screen();
+    if (g_last_error < 0) {
+        pspDebugScreenPrintf("\nWi-Fi dialog error: 0x%08X\n",
+            (unsigned int)g_last_error);
     }
-
-    g_stage = "sceKernelStartModule(PMSP)";
-    result = sceKernelStartModule(module_id, 0, NULL, &status, NULL);
-    g_user_free_after_prx = pspSdkTotalFreeUserMemSize();
-    if (result < 0) {
-        sceKernelUnloadModule(module_id);
-        g_user_free_after_unload = pspSdkTotalFreeUserMemSize();
-        goto finished;
-    }
-
-    g_stage = "sceKernelStopModule(PMSP)";
-    stop_result = sceKernelStopModule(module_id, 0, NULL, &status, NULL);
-    if (stop_result < 0) {
-        result = stop_result;
-        goto finished;
-    }
-
-    g_stage = "sceKernelUnloadModule(PMSP)";
-    result = sceKernelUnloadModule(module_id);
-    if (result < 0) {
-        goto finished;
-    }
-
-    g_user_free_after_unload = pspSdkTotalFreeUserMemSize();
-
-    /*
-     * Phase 2: only after PMSP has been stopped and unloaded,
-     * load the official network modules.
-     */
-    g_stage = "sceUtilityLoadNetModule(COMMON)";
-    result = sceUtilityLoadNetModule(PSP_NET_MODULE_COMMON);
-    if (result < 0) {
-        goto finished;
-    }
-    common_loaded = 1;
-
-    g_stage = "sceUtilityLoadNetModule(INET)";
-    result = sceUtilityLoadNetModule(PSP_NET_MODULE_INET);
-    if (result < 0) {
-        goto finished;
-    }
-    inet_loaded = 1;
-
-    g_user_free_after_modules = pspSdkTotalFreeUserMemSize();
-
-    /*
-     * Phase 3: run the PSPSDK Internet initialization helper.
-     * Do not open Netconf or attempt HTTPS in this diagnostic build.
-     */
-    g_stage = "pspSdkInetInit";
-    result = pspSdkInetInit();
-    if (result == 0) {
-        g_inet_initialized = 1;
-    }
-
-finished:
-    if (result < 0) {
-        /* Preserve the failing stage and error code on screen. */
-        unload_net_modules(inet_loaded, common_loaded);
-    }
-
-    show_result(result);
 
     for (;;) {
-        wait_for_cross();
+        unsigned int buttons;
 
-        if (g_inet_initialized) {
-            pspSdkInetTerm();
-            g_inet_initialized = 0;
+        sceCtrlReadBufferPositive(&pad, 1);
+        buttons = pad.Buttons;
+
+        if ((buttons & PSP_CTRL_CROSS) &&
+            !(previous_buttons & PSP_CTRL_CROSS)) {
+            pspDebugScreenPrintf("\nOpening Wi-Fi settings...\n");
+            g_last_error = open_wifi_dialog();
+            show_tester_screen();
+
+            if (g_last_error < 0) {
+                pspDebugScreenPrintf("\nWi-Fi dialog error: 0x%08X\n",
+                    (unsigned int)g_last_error);
+            }
         }
-        unload_net_modules(inet_loaded, common_loaded);
-        sceKernelExitGame();
+
+        previous_buttons = (int)buttons;
+        sceKernelDelayThread(10000);
     }
 
     return 0;
