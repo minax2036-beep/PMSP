@@ -6,6 +6,7 @@
 
 #include <pspkernel.h>
 #include <pspdisplay.h>
+#include <pspdebug.h>
 #include <pspgu.h>
 #include <pspgum.h>
 #include <psputility.h>
@@ -31,7 +32,7 @@ PSP_NO_CREATE_MAIN_THREAD();
 #define FRAME_SIZE (BUF_WIDTH * SCREEN_HEIGHT * 4)
 
 static volatile int g_running = 1;
-static volatile int g_demo_finished = 0;
+static const char *g_error_stage = "startup";
 static unsigned int __attribute__((aligned(16))) g_display_list[4096];
 
 struct Vertex {
@@ -167,24 +168,29 @@ static int initialize_network(void)
 {
     int result;
 
+    g_error_stage = "Load COMMON network module";
     result = sceUtilityLoadNetModule(PSP_NET_MODULE_COMMON);
     if (result < 0)
         return result;
 
+    g_error_stage = "Load INET network module";
     result = sceUtilityLoadNetModule(PSP_NET_MODULE_INET);
     if (result < 0)
         return result;
 
+    g_error_stage = "sceNetInit";
     result = sceNetInit(128 * 1024, 42, 4 * 1024, 42, 4 * 1024);
     if (result < 0)
         return result;
 
+    g_error_stage = "sceNetInetInit";
     result = sceNetInetInit();
     if (result < 0) {
         sceNetTerm();
         return result;
     }
 
+    g_error_stage = "sceNetApctlInit";
     result = sceNetApctlInit(0x8000, 48);
     if (result < 0) {
         sceNetInetTerm();
@@ -222,6 +228,7 @@ static int run_netconf_dialog(void)
     memset(&adhoc_parameters, 0, sizeof(adhoc_parameters));
     data.adhocparam = &adhoc_parameters;
 
+    g_error_stage = "sceUtilityNetconfInitStart";
     result = sceUtilityNetconfInitStart(&data);
     if (result < 0)
         return result;
@@ -263,6 +270,7 @@ static int demo_thread(SceSize args, void *argp)
     (void)args;
     (void)argp;
 
+    g_error_stage = "setup_callbacks";
     result = setup_callbacks();
     if (result < 0)
         goto finished;
@@ -276,7 +284,12 @@ static int demo_thread(SceSize args, void *argp)
     terminate_network();
 
 finished:
-    g_demo_finished = 1;
+    if (result < 0) {
+        pspDebugScreenInit();
+        pspDebugScreenPrintf("PMSP Netconf Demo failed\\n");
+        pspDebugScreenPrintf("Stage: %s\\n", g_error_stage);
+        pspDebugScreenPrintf("Error: 0x%08X\\n", (unsigned int)result);
+    }
     sceKernelExitDeleteThread(result);
     return 0;
 }
@@ -289,7 +302,6 @@ int module_start(SceSize args, void *argp)
     (void)argp;
 
     g_running = 1;
-    g_demo_finished = 0;
 
     thread_id = sceKernelCreateThread(
         "PMSP Netconf Demo Thread", demo_thread, 0x18, 0x10000,
