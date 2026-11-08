@@ -330,8 +330,9 @@ int module_start(SceSize args, void *argp)
 
     g_running = 1;
 
+    /* Keep the worker stack small to preserve contiguous user memory for INET. */
     thread_id = sceKernelCreateThread(
-        "PMSP Netconf Demo Thread", demo_thread, 0x18, 0x10000,
+        "PMSP Netconf Demo Thread", demo_thread, 0x18, 0x4000,
         PSP_THREAD_ATTR_USER, NULL);
 
     if (thread_id < 0)
