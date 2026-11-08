@@ -9,7 +9,7 @@ CXXFLAGS = $(CFLAGS)
 ASFLAGS = $(CFLAGS)
 LIBDIR =
 LDFLAGS =
-LIBS = -lpspdebug -lpspctrl
+LIBS = -lpspdebug -lpspctrl -lpsputility -lpspnet_apctl -lpspnet_inet -lpspnet
 
 EXTRA_TARGETS = EBOOT.PBP
 PSP_EBOOT_TITLE = PMSP Tester
