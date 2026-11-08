@@ -47,12 +47,15 @@ jobs:
         uses: actions/checkout@v4
       - name: Build PMSP PRX
         run: make -C psp/prx
+      - name: Build independent Netconf Demo PRX
+        run: make -C psp/netconf_demo
       - name: Build PMSP Tester EBOOT.PBP
         run: make -C psp/tester
       - name: Collect PSP release files
         run: |
           mkdir -p dist
           cp psp/prx/pmsp.prx dist/pmsp.prx
+          cp psp/netconf_demo/netdialog_demo.prx dist/netdialog_demo.prx
           cp psp/tester/EBOOT.PBP dist/EBOOT.PBP
           ls -lh dist
       - name: Upload PSP build
@@ -80,5 +83,6 @@ jobs:
         with:
           files: |
             dist/pmsp.prx
+            dist/netdialog_demo.prx
             dist/EBOOT.PBP
           fail_on_unmatched_files: true
