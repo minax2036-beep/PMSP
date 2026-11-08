@@ -11,7 +11,7 @@ PSP_MODULE_INFO("PMSP Tester", PSP_MODULE_USER, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER);
 
 static pspUtilityNetconfData g_netconf;
-static pspUtilityNetconfAdhoc g_adhoc;
+static struct pspUtilityNetconfAdhoc g_adhoc;
 
 static int g_common_loaded;
 static int g_inet_loaded;
@@ -97,7 +97,7 @@ static int open_wifi_dialog(void)
     memset(&g_adhoc, 0, sizeof(g_adhoc));
 
     g_netconf.base.size = sizeof(g_netconf);
-    g_netconf.base.language = PSP_SYSTEMPARAM_LANGUAGE_DEFAULT;
+    g_netconf.base.language = PSP_SYSTEMPARAM_LANGUAGE_ENGLISH;
     g_netconf.base.buttonSwap = PSP_UTILITY_ACCEPT_CROSS;
     g_netconf.base.graphicsThread = 17;
     g_netconf.base.accessThread = 19;
