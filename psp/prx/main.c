@@ -24,26 +24,12 @@ int pmspGetLastError(void)
 
 int module_start(SceSize args, void *argp)
 {
-    PMSPApi *api;
-
-    if (argp == NULL || args < sizeof(PMSPApi)) {
-        g_last_error = PMSP_ERROR_INVALID_ARG;
-        return PMSP_ERROR_INVALID_ARG;
-    }
-
-    api = (PMSPApi *)argp;
-
-    api->struct_size = sizeof(PMSPApi);
-    api->api_version = PMSP_API_VERSION;
-    api->get_version = pmspGetVersion;
-    api->get_status = pmspGetStatus;
-    api->get_last_error = pmspGetLastError;
-    api->https_get = pmspHttpsGet;
+    (void)args;
+    (void)argp;
 
     g_last_error = PMSP_OK;
     g_status = PMSP_STATUS_READY;
-
-    return PMSP_OK;
+    return 0;
 }
 
 int module_stop(SceSize args, void *argp)
