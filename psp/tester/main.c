@@ -5,16 +5,21 @@
 
 PSP_MODULE_INFO("PMSP Tester", PSP_MODULE_USER, 1, 0);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER);
+
 #define PMSP_PRX_PATH "ms0:/PSP/GAME/PMSP/pmsp.prx"
 
 static void wait_for_confirm(void)
 {
     SceCtrlData pad;
+
     sceCtrlSetSamplingCycle(0);
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_DIGITAL);
+
     for (;;) {
         sceCtrlReadBufferPositive(&pad, 1);
-        if (pad.Buttons & (PSP_CTRL_CROSS | PSP_CTRL_CIRCLE)) break;
+        if (pad.Buttons & (PSP_CTRL_CROSS | PSP_CTRL_CIRCLE)) {
+            break;
+        }
         sceKernelDelayThread(10000);
     }
 }
@@ -30,7 +35,7 @@ int main(void)
     int status = 0;
     int start_result;
     int stop_result;
-    PMSPApi api;
+    unsigned int version;
 
     pspDebugScreenInit();
     pspDebugScreenPrintf("PMSP Tester - HTTPS API test\n");
@@ -41,22 +46,17 @@ int main(void)
     if (module_id < 0) {
         pspDebugScreenPrintf("FAILED: sceKernelLoadModule\n");
         print_error("Error", module_id);
-        pspDebugScreenPrintf("\nCopy pmsp.prx beside EBOOT.PBP in ms0:/PSP/GAME/PMSP/\nPress X or O to exit.");
+        pspDebugScreenPrintf("\nCopy pmsp.prx beside EBOOT.PBP in ms0:/PSP/GAME/PMSP/\n");
+        pspDebugScreenPrintf("Press X or O to exit.");
         wait_for_confirm();
         sceKernelExitGame();
         return 0;
     }
 
     pspDebugScreenPrintf("PRX loaded. Module ID: %d\n", module_id);
-    pspDebugScreenPrintf("Starting PRX and requesting API...\n");
-    api.struct_size = sizeof(PMSPApi);
-    api.api_version = PMSP_API_VERSION;
-    api.get_version = NULL;
-    api.get_status = NULL;
-    api.get_last_error = NULL;
-    api.https_get = NULL;
+    pspDebugScreenPrintf("Starting PRX...\n");
 
-    start_result = sceKernelStartModule(module_id, sizeof(api), &api, &status, NULL);
+    start_result = sceKernelStartModule(module_id, 0, NULL, &status, NULL);
     if (start_result < 0) {
         pspDebugScreenPrintf("FAILED: sceKernelStartModule\n");
         print_error("Error", start_result);
@@ -67,35 +67,41 @@ int main(void)
         return 0;
     }
 
-    pspDebugScreenPrintf("PRX started successfully.\n");
-    if (api.get_version == NULL || api.get_status == NULL ||
-        api.get_last_error == NULL || api.https_get == NULL) {
-        pspDebugScreenPrintf("FAILED: API table is incomplete.\n");
+    pspDebugScreenPrintf("PRX started. Start status: %d\n", status);
+    pspDebugScreenPrintf("Checking standard PRX imports...\n");
+
+    /*
+     * PMSP.S contains weak import stubs. The PRX is loaded above; the PSP
+     * module loader should now resolve these NID-based imports.
+     */
+    version = pmspGetVersion();
+
+    pspDebugScreenPrintf("\nPMSP API detected!\n");
+    pspDebugScreenPrintf("API version: %u.%u\n",
+        (version >> 16) & 0xFFFF, version & 0xFFFF);
+    pspDebugScreenPrintf("Status: %d\n", pmspGetStatus());
+    pspDebugScreenPrintf("Last error: %d\n", pmspGetLastError());
+    pspDebugScreenPrintf("HTTPS GET: available\n");
+
+    if (pmspGetStatus() == PMSP_STATUS_READY &&
+        pmspGetLastError() == PMSP_OK) {
+        pspDebugScreenPrintf("\nSUCCESS: PMSP PRX imports resolved.\n");
     } else {
-        unsigned int version = api.get_version();
-        pspDebugScreenPrintf("\nPMSP API detected!\n");
-        pspDebugScreenPrintf("API version: %u.%u\n",
-            (version >> 16) & 0xFFFF, version & 0xFFFF);
-        pspDebugScreenPrintf("API table size: %u bytes\n", api.struct_size);
-        pspDebugScreenPrintf("Status: %d\n", api.get_status());
-        pspDebugScreenPrintf("Last error: %d\n", api.get_last_error());
-        pspDebugScreenPrintf("HTTPS GET: available\n");
-        if (api.get_status() == PMSP_STATUS_READY &&
-            api.get_last_error() == PMSP_OK) {
-            pspDebugScreenPrintf("\nSUCCESS: PMSP HTTPS API exported.\n");
-        } else {
-            pspDebugScreenPrintf("\nFAILED: unexpected API state.\n");
-        }
+        pspDebugScreenPrintf("\nFAILED: unexpected PMSP state.\n");
     }
 
     pspDebugScreenPrintf("\nCaller must initialize Wi-Fi first.\n");
-    pspDebugScreenPrintf("Call: api.https_get(url, output_path)\n");
+    pspDebugScreenPrintf("Call: pmspHttpsGet(url, output_path)\n");
     pspDebugScreenPrintf("\nPress X or O to stop and exit.");
     wait_for_confirm();
 
     stop_result = sceKernelStopModule(module_id, 0, NULL, &status, NULL);
-    if (stop_result < 0) print_error("Warning: sceKernelStopModule", stop_result);
-    else pspDebugScreenPrintf("\nPMSP PRX stopped.\n");
+    if (stop_result < 0) {
+        print_error("Warning: sceKernelStopModule", stop_result);
+    } else {
+        pspDebugScreenPrintf("\nPMSP PRX stopped.\n");
+    }
+
     sceKernelUnloadModule(module_id);
     sceKernelExitGame();
     return 0;
