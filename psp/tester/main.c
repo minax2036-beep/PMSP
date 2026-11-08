@@ -86,7 +86,7 @@ static int load_network_modules(void)
 static int open_wifi_dialog(void)
 {
     int result;
-    int finished = 0;
+    int shutdown_started = 0;
 
     result = load_network_modules();
     if (result < 0) {
@@ -111,34 +111,32 @@ static int open_wifi_dialog(void)
         return result;
     }
 
-    while (!finished) {
+    for (;;) {
         int status = sceUtilityNetconfGetStatus();
 
-        switch (status) {
-        case PSP_UTILITY_DIALOG_VISIBLE:
+        if (status == PSP_UTILITY_DIALOG_NONE) {
+            break;
+        }
+
+        if (status == PSP_UTILITY_DIALOG_VISIBLE) {
             result = sceUtilityNetconfUpdate(1);
             if (result < 0) {
                 return result;
             }
-            break;
-
-        case PSP_UTILITY_DIALOG_QUIT:
+        } else if (status == PSP_UTILITY_DIALOG_QUIT &&
+                   !shutdown_started) {
             result = sceUtilityNetconfShutdownStart();
             if (result < 0) {
                 return result;
             }
-            break;
-
-        case PSP_UTILITY_DIALOG_FINISHED:
-            finished = 1;
-            break;
-
-        case PSP_UTILITY_DIALOG_NONE:
-        case PSP_UTILITY_DIALOG_INIT:
-        default:
-            break;
+            shutdown_started = 1;
         }
 
+        /*
+         * Do not return on FINISHED. The utility remains busy until
+         * GetStatus() reports NONE, and cannot be initialized again
+         * before that transition completes.
+         */
         sceDisplayWaitVblankStart();
         sceKernelDelayThread(1000);
     }
