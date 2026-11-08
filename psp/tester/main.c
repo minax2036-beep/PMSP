@@ -153,12 +153,12 @@ int main(void)
 
     g_stage = "sceKernelStartModule(PMSP)";
     result = sceKernelStartModule(module_id, 0, NULL, &status, NULL);
+    g_user_free_after_prx = pspSdkTotalFreeUserMemSize();
     if (result < 0) {
         sceKernelUnloadModule(module_id);
+        g_user_free_after_unload = pspSdkTotalFreeUserMemSize();
         goto finished;
     }
-
-    g_user_free_after_prx = pspSdkTotalFreeUserMemSize();
 
     g_stage = "sceKernelStopModule(PMSP)";
     stop_result = sceKernelStopModule(module_id, 0, NULL, &status, NULL);
