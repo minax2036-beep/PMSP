@@ -20,14 +20,16 @@ static int g_net_stack_started;
 static int g_net_inet_started;
 static int g_net_apctl_started;
 
+static const char *g_failure_stage = "Not started";
+static int g_dialog_last_status = -1;
+static int g_apctl_state = -1;
+
 static int exit_callback(int arg1, int arg2, void *common)
 {
     (void)arg1;
     (void)arg2;
     (void)common;
 
-    /* The PSP system calls this after the user confirms Exit Game
-       in the official HOME menu. */
     sceKernelExitGame();
     return 0;
 }
@@ -95,13 +97,17 @@ static void show_error(const char *title, const char *message, int error)
 {
     pspDebugScreenClear();
     pspDebugScreenSetXY(0, 0);
-    pspDebugScreenPrintf("PMSP - ERROR\n");
+    pspDebugScreenPrintf("PMSP - DIAGNOSTIC ERROR\n");
     pspDebugScreenPrintf("------------------------------\n\n");
-    pspDebugScreenPrintf("%s\n\n", title);
+    pspDebugScreenPrintf("%s\n", title);
     pspDebugScreenPrintf("%s\n\n", message);
-    print_error("Error code", error);
-    pspDebugScreenPrintf("\nX: Retry Wi-Fi connection\n");
-    pspDebugScreenPrintf("HOME: Open the PSP system menu\n");
+    pspDebugScreenPrintf("Failed stage:\n%s\n", g_failure_stage);
+    print_error("Return code", error);
+    pspDebugScreenPrintf("Netconf status: 0x%08X\n",
+        (unsigned int)g_dialog_last_status);
+    pspDebugScreenPrintf("APCTL state: %d\n\n", g_apctl_state);
+    pspDebugScreenPrintf("X: Retry Wi-Fi connection\n");
+    pspDebugScreenPrintf("HOME: PSP system menu\n");
 }
 
 static int init_network_stack(void)
@@ -109,9 +115,11 @@ static int init_network_stack(void)
     int result;
 
     if (!g_net_modules_loaded) {
+        g_failure_stage = "sceUtilityLoadNetModule(COMMON)";
         result = sceUtilityLoadNetModule(PSP_NET_MODULE_COMMON);
         if (result < 0) return result;
 
+        g_failure_stage = "sceUtilityLoadNetModule(INET)";
         result = sceUtilityLoadNetModule(PSP_NET_MODULE_INET);
         if (result < 0) {
             sceUtilityUnloadNetModule(PSP_NET_MODULE_COMMON);
@@ -121,23 +129,27 @@ static int init_network_stack(void)
     }
 
     if (!g_net_stack_started) {
+        g_failure_stage = "sceNetInit";
         result = sceNetInit(128 * 1024, 42, 4 * 1024, 42, 4 * 1024);
         if (result < 0) return result;
         g_net_stack_started = 1;
     }
 
     if (!g_net_inet_started) {
+        g_failure_stage = "sceNetInetInit";
         result = sceNetInetInit();
         if (result < 0) return result;
         g_net_inet_started = 1;
     }
 
     if (!g_net_apctl_started) {
+        g_failure_stage = "sceNetApctlInit";
         result = sceNetApctlInit(0x8000, 48);
         if (result < 0) return result;
         g_net_apctl_started = 1;
     }
 
+    g_failure_stage = "Network stack initialized";
     return 0;
 }
 
@@ -167,7 +179,10 @@ static int run_network_dialog(void)
     pspUtilityNetconfData data;
     int result;
     int status;
-    int state = 0;
+
+    g_failure_stage = "Network stack initialization";
+    g_dialog_last_status = -1;
+    g_apctl_state = -1;
 
     result = init_network_stack();
     if (result < 0) return result;
@@ -186,33 +201,55 @@ static int run_network_dialog(void)
     data.hotspot_connected = 0;
     data.wifisp = 0;
 
+    g_failure_stage = "sceUtilityNetconfInitStart";
     result = sceUtilityNetconfInitStart(&data);
     if (result < 0) return result;
 
     for (;;) {
+        g_failure_stage = "sceUtilityNetconfGetStatus";
         status = sceUtilityNetconfGetStatus();
+        g_dialog_last_status = status;
 
         if (status == PSP_UTILITY_DIALOG_VISIBLE) {
+            g_failure_stage = "sceUtilityNetconfUpdate";
             sceUtilityNetconfUpdate(1);
         } else if (status == PSP_UTILITY_DIALOG_QUIT) {
-            sceUtilityNetconfShutdownStart();
+            g_failure_stage = "sceUtilityNetconfShutdownStart";
+            result = sceUtilityNetconfShutdownStart();
+            if (result < 0) return result;
         } else if (status == PSP_UTILITY_DIALOG_FINISHED) {
             break;
+        } else if (status == PSP_UTILITY_DIALOG_NONE) {
+            g_failure_stage = "Netconf dialog disappeared unexpectedly";
+            return -1;
         }
 
         sceDisplayWaitVblankStart();
         sceKernelDelayThreadCB(1000);
     }
 
-    while (sceUtilityNetconfGetStatus() != PSP_UTILITY_DIALOG_NONE) {
+    /* FINISHED follows the QUIT -> ShutdownStart transition.
+       Wait for the utility dialog to fully return to NONE. */
+    for (;;) {
+        g_failure_stage = "sceUtilityNetconfGetStatus(wait NONE)";
+        status = sceUtilityNetconfGetStatus();
+        g_dialog_last_status = status;
+        if (status == PSP_UTILITY_DIALOG_NONE) break;
+
         sceDisplayWaitVblankStart();
         sceKernelDelayThreadCB(1000);
     }
 
-    result = sceNetApctlGetState(&state);
+    g_failure_stage = "sceNetApctlGetState";
+    result = sceNetApctlGetState(&g_apctl_state);
     if (result < 0) return result;
-    if (state != 4) return -1;
 
+    if (g_apctl_state != 4) {
+        g_failure_stage = "sceNetApctlGetState: not connected (state != 4)";
+        return -1;
+    }
+
+    g_failure_stage = "Wi-Fi connected";
     return 0;
 }
 
@@ -223,10 +260,11 @@ static void show_wifi_success(void)
     pspDebugScreenPrintf("PMSP - NETWORK READY\n");
     pspDebugScreenPrintf("------------------------------\n\n");
     pspDebugScreenPrintf("Wi-Fi connection is ready.\n");
+    pspDebugScreenPrintf("APCTL state: %d\n", g_apctl_state);
     pspDebugScreenPrintf("PMSP API status: %d\n", pmspGetStatus());
     pspDebugScreenPrintf("Last error: %d\n\n", pmspGetLastError());
     pspDebugScreenPrintf("X: Open Wi-Fi settings again\n");
-    pspDebugScreenPrintf("HOME: Open the PSP system menu\n");
+    pspDebugScreenPrintf("HOME: PSP system menu\n");
 }
 
 int main(void)
@@ -247,11 +285,13 @@ int main(void)
 
     module_id = sceKernelLoadModule(PMSP_PRX_PATH, 0, NULL);
     if (module_id < 0) {
+        g_failure_stage = "sceKernelLoadModule(PMSP PRX)";
         show_error("PRX load failed",
-            "Check that pmsp.prx is at the configured path.", module_id);
+            "Check the PRX path and file placement.", module_id);
         for (;;) wait_for_cross();
     }
 
+    g_failure_stage = "sceKernelStartModule(PMSP PRX)";
     result = sceKernelStartModule(module_id, 0, NULL, &status, NULL);
     if (result < 0) {
         show_error("PRX start failed",
@@ -260,22 +300,21 @@ int main(void)
         for (;;) wait_for_cross();
     }
 
-    /* Open the official PSP Wi-Fi dialog automatically at startup. */
+    /* Automatically show the official PSP network dialog at startup. */
     for (;;) {
         result = run_network_dialog();
 
         if (result < 0) {
-            show_error("Wi-Fi connection failed",
-                "Check the WLAN switch and access point settings.", result);
+            show_error("Wi-Fi setup failed",
+                "The failed stage is shown above.", result);
         } else {
             show_wifi_success();
         }
 
-        /* Only CROSS reopens the Wi-Fi dialog. HOME is handled by PSP OS. */
+        /* CROSS retries. HOME remains handled by the PSP system UI. */
         wait_for_cross();
     }
 
-    /* Kept as explicit cleanup for any future normal-exit path. */
     term_network();
     stop_result = sceKernelStopModule(module_id, 0, NULL, &status, NULL);
     if (stop_result >= 0) {
