@@ -306,14 +306,10 @@ int main(void)
 
     pspDebugScreenInit();
 
-    pspDebugScreenPrintf("PMSP WI-FI TESTER
-");
-    pspDebugScreenPrintf("------------------------------
-");
-    pspDebugScreenPrintf("Dialog is integrated into EBOOT.PBP.
-");
-    pspDebugScreenPrintf("Initializing network modules...
-");
+    pspDebugScreenPrintf("PMSP WI-FI TESTER\n");
+    pspDebugScreenPrintf("------------------------------\n");
+    pspDebugScreenPrintf("Dialog is integrated into EBOOT.PBP.\n");
+    pspDebugScreenPrintf("Initializing network modules...\n");
 
     result = setup_callbacks();
     if (result < 0) {
@@ -325,10 +321,8 @@ int main(void)
     if (result < 0)
         goto error;
 
-    pspDebugScreenPrintf("Network initialized.
-");
-    pspDebugScreenPrintf("Opening Wi-Fi settings...
-");
+    pspDebugScreenPrintf("Network initialized.\n");
+    pspDebugScreenPrintf("Opening Wi-Fi settings...\n");
     sceKernelDelayThread(500000);
 
     setup_gu();
