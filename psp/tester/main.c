@@ -1,4 +1,5 @@
 #include <pspkernel.h>
+#include <string.h>
 #include <pspdebug.h>
 #include <pspctrl.h>
 #include <pspdisplay.h>
@@ -132,6 +133,7 @@ static int run_network_dialog(void)
     result = init_network_stack();
     if (result < 0) return result;
 
+    memset(&data, 0, sizeof(data));
     data.base.size = sizeof(data);
     data.base.language = PSP_SYSTEMPARAM_LANGUAGE_ENGLISH;
     data.base.buttonSwap = PSP_UTILITY_ACCEPT_CROSS;
