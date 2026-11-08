@@ -8,26 +8,30 @@
 
 The repository contains a PSP PRX module and a tester application. GitHub Actions builds both PSP outputs. Pushing a version tag such as `v0.2.0` runs the builds and publishes `pmsp.prx` and `EBOOT.PBP` as GitHub Release assets.
 
-### API v1.1
+### API v1.1 — standard PRX imports
 
-The public header is `psp/include/pmsp_api.h`. Pass a `PMSPApi` structure to `sceKernelStartModule()`; the PRX fills it with function pointers.
+The PMSP PRX exports its functions through a standard PSPSDK export library named `PMSP`. The Tester generates weak-import stubs from `psp/prx/exports.exp` with `psp-build-exports -k`, then links those stubs into its EBOOT.
 
-- `get_version()` — returns the API version.
-- `get_status()` — returns module status.
-- `get_last_error()` — returns the last PMSP error.
-- `https_get(url, output_path)` — performs HTTPS GET and saves the response body.
+After loading and starting `pmsp.prx`, the functions can be called directly:
 
-Example after loading and starting the PRX:
+- `pmspGetVersion()` — returns the API version.
+- `pmspGetStatus()` — returns module status.
+- `pmspGetLastError()` — returns the last PMSP error.
+- `pmspHttpsGet(url, output_path)` — performs HTTPS GET and saves the response body.
+
+Example:
 
 ```c
-int result = api.https_get("https://example.com/", "ms0:/index.html");
+int result = pmspHttpsGet("https://example.com/", "ms0:/index.html");
 ```
+
+The old `PMSPApi` function-pointer table has been removed. The weak-import stubs allow the Tester to start before the PMSP PRX is loaded; loading the PRX should resolve the matching NID imports.
 
 ### PSP HTTPS backend
 
 The PSP backend uses the system `sceHttp` / `sceHttps` libraries and loads the system default certificate set. Only `https://` URLs are accepted. Redirects are disabled for now to prevent an automatic downgrade to plain HTTP.
 
-The calling Homebrew must initialize the PSP network stack and connect to Wi-Fi before calling `https_get`. Response data is streamed in 4 KiB blocks to a temporary file, then renamed after a successful 2xx response. The full response is not held in RAM.
+The calling Homebrew must initialize the PSP network stack and connect to Wi-Fi before calling `pmspHttpsGet`. Response data is streamed in 4 KiB blocks to a temporary file, then renamed after a successful 2xx response. The full response is not held in RAM.
 
 This is an initial backend. A successful build does not prove real-device TLS interoperability or certificate/hostname validation behavior; those must be verified on hardware before production use. The PSP backend currently uses system HTTPS rather than the Mbed TLS 3.6.3 backend used by the POSIX prototype.
 
@@ -36,8 +40,8 @@ This is an initial backend. A successful build does not prove real-device TLS in
 1. Download `pmsp.prx` and `EBOOT.PBP` from a GitHub Release.
 2. Create `ms0:/PSP/GAME/PMSP/` on the Memory Stick.
 3. Copy both `EBOOT.PBP` and `pmsp.prx` into that same folder.
-4. Run **PMSP Tester** from the `PMSP` folder. It loads `pmsp.prx` from the same directory and verifies the HTTPS API table.
-5. A separate Homebrew should initialize Wi-Fi before calling `api.https_get()`.
+4. Run **PMSP Tester** from the `PMSP` folder. It loads `pmsp.prx` and checks the standard NID-based imports.
+5. A separate Homebrew should initialize Wi-Fi before calling `pmspHttpsGet()`.
 
 ## Automatic builds and releases
 
