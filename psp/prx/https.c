@@ -3,7 +3,7 @@
 #include <psphttp.h>
 #include <pspiofilemgr.h>
 
-#include "pmsp_api.h"
+#include "pmsp_internal.h"
 
 #define PMSP_HTTP_BUFFER_SIZE 4096
 #define PMSP_PATH_MAX 240
