@@ -252,7 +252,7 @@ static int show_wifi_dialog(void)
     data.base.accessThread = 19;
     data.base.fontThread = 18;
     data.base.soundThread = 16;
-    data.action = PSP_NETCONF_ACTION_CONNECT;
+    data.action = PSP_NETCONF_ACTION_CONNECTAP;
 
     memset(&adhoc_parameters, 0, sizeof(adhoc_parameters));
     data.adhocparam = &adhoc_parameters;
