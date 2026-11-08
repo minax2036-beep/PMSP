@@ -20,6 +20,53 @@ static int g_net_stack_started;
 static int g_net_inet_started;
 static int g_net_apctl_started;
 
+static int exit_callback(int arg1, int arg2, void *common)
+{
+    (void)arg1;
+    (void)arg2;
+    (void)common;
+
+    /* The PSP system calls this after the user confirms Exit Game
+       in the official HOME menu. */
+    sceKernelExitGame();
+    return 0;
+}
+
+static int callback_thread(SceSize args, void *argp)
+{
+    int callback_id;
+
+    (void)args;
+    (void)argp;
+
+    callback_id = sceKernelCreateCallback(
+        "PMSP Exit Callback", exit_callback, NULL);
+
+    if (callback_id >= 0) {
+        sceKernelRegisterExitCallback(callback_id);
+    }
+
+    sceKernelSleepThreadCB();
+    return 0;
+}
+
+static void setup_callbacks(void)
+{
+    SceUID thread_id;
+
+    thread_id = sceKernelCreateThread(
+        "PMSP Callback Thread",
+        callback_thread,
+        0x11,
+        0x1000,
+        PSP_THREAD_ATTR_USER,
+        NULL);
+
+    if (thread_id >= 0) {
+        sceKernelStartThread(thread_id, 0, NULL);
+    }
+}
+
 static unsigned int read_buttons(void)
 {
     SceCtrlData pad;
@@ -28,23 +75,15 @@ static unsigned int read_buttons(void)
     return pad.Buttons;
 }
 
-static unsigned int wait_for_button(void)
+static void wait_for_cross(void)
 {
-    unsigned int buttons;
-
-    for (;;) {
-        buttons = read_buttons();
-        if (buttons & (PSP_CTRL_CROSS | PSP_CTRL_CIRCLE)) {
-            break;
-        }
-        sceKernelDelayThread(10000);
+    while (!(read_buttons() & PSP_CTRL_CROSS)) {
+        sceKernelDelayThreadCB(10000);
     }
 
-    while (read_buttons() & (PSP_CTRL_CROSS | PSP_CTRL_CIRCLE)) {
-        sceKernelDelayThread(10000);
+    while (read_buttons() & PSP_CTRL_CROSS) {
+        sceKernelDelayThreadCB(10000);
     }
-
-    return buttons;
 }
 
 static void print_error(const char *label, int error)
@@ -61,8 +100,8 @@ static void show_error(const char *title, const char *message, int error)
     pspDebugScreenPrintf("%s\n\n", title);
     pspDebugScreenPrintf("%s\n\n", message);
     print_error("Error code", error);
-    pspDebugScreenPrintf("\nX: Retry / continue\n");
-    pspDebugScreenPrintf("O: Back to menu\n");
+    pspDebugScreenPrintf("\nX: Retry Wi-Fi connection\n");
+    pspDebugScreenPrintf("HOME: Open the PSP system menu\n");
 }
 
 static int init_network_stack(void)
@@ -162,12 +201,12 @@ static int run_network_dialog(void)
         }
 
         sceDisplayWaitVblankStart();
-        sceKernelDelayThread(1000);
+        sceKernelDelayThreadCB(1000);
     }
 
     while (sceUtilityNetconfGetStatus() != PSP_UTILITY_DIALOG_NONE) {
         sceDisplayWaitVblankStart();
-        sceKernelDelayThread(1000);
+        sceKernelDelayThreadCB(1000);
     }
 
     result = sceNetApctlGetState(&state);
@@ -177,21 +216,6 @@ static int run_network_dialog(void)
     return 0;
 }
 
-static void show_main_menu(unsigned int version)
-{
-    pspDebugScreenClear();
-    pspDebugScreenSetXY(0, 0);
-    pspDebugScreenPrintf("PMSP Tester - HTTPS API\n");
-    pspDebugScreenPrintf("------------------------------\n\n");
-    pspDebugScreenPrintf("PMSP PRX: loaded\n");
-    pspDebugScreenPrintf("API version: %u.%u\n",
-        (version >> 16) & 0xFFFF, version & 0xFFFF);
-    pspDebugScreenPrintf("API status: %d\n", pmspGetStatus());
-    pspDebugScreenPrintf("Last error: %d\n\n", pmspGetLastError());
-    pspDebugScreenPrintf("X: Connect to Wi-Fi\n");
-    pspDebugScreenPrintf("O: Return to PSP home (XMB)\n");
-}
-
 static void show_wifi_success(void)
 {
     pspDebugScreenClear();
@@ -199,11 +223,10 @@ static void show_wifi_success(void)
     pspDebugScreenPrintf("PMSP - NETWORK READY\n");
     pspDebugScreenPrintf("------------------------------\n\n");
     pspDebugScreenPrintf("Wi-Fi connection is ready.\n");
-    pspDebugScreenPrintf("PMSP API is available.\n\n");
-    pspDebugScreenPrintf("The HTTPS GET test can now be\n");
-    pspDebugScreenPrintf("started by the application.\n\n");
+    pspDebugScreenPrintf("PMSP API status: %d\n", pmspGetStatus());
+    pspDebugScreenPrintf("Last error: %d\n\n", pmspGetLastError());
     pspDebugScreenPrintf("X: Open Wi-Fi settings again\n");
-    pspDebugScreenPrintf("O: Back to PMSP menu\n");
+    pspDebugScreenPrintf("HOME: Open the PSP system menu\n");
 }
 
 int main(void)
@@ -212,11 +235,11 @@ int main(void)
     int status = 0;
     int result;
     int stop_result;
-    unsigned int version;
 
     sceCtrlSetSamplingCycle(0);
     sceCtrlSetSamplingMode(PSP_CTRL_MODE_DIGITAL);
     pspDebugScreenInit();
+    setup_callbacks();
 
     pspDebugScreenPrintf("PMSP Tester\n");
     pspDebugScreenPrintf("------------------------------\n");
@@ -225,64 +248,40 @@ int main(void)
     module_id = sceKernelLoadModule(PMSP_PRX_PATH, 0, NULL);
     if (module_id < 0) {
         show_error("PRX load failed",
-            "Check that pmsp.prx is beside EBOOT.PBP.", module_id);
-        wait_for_button();
-        sceKernelExitGame();
-        return 0;
+            "Check that pmsp.prx is at the configured path.", module_id);
+        for (;;) wait_for_cross();
     }
 
     result = sceKernelStartModule(module_id, 0, NULL, &status, NULL);
     if (result < 0) {
-        show_error("PRX start failed", "The PMSP module could not start.", result);
+        show_error("PRX start failed",
+            "The PMSP module could not start.", result);
         sceKernelUnloadModule(module_id);
-        wait_for_button();
-        sceKernelExitGame();
-        return 0;
+        for (;;) wait_for_cross();
     }
 
-    version = pmspGetVersion();
-
+    /* Open the official PSP Wi-Fi dialog automatically at startup. */
     for (;;) {
-        unsigned int buttons;
+        result = run_network_dialog();
 
-        show_main_menu(version);
-        buttons = wait_for_button();
-
-        if (buttons & PSP_CTRL_CIRCLE) {
-            break;
+        if (result < 0) {
+            show_error("Wi-Fi connection failed",
+                "Check the WLAN switch and access point settings.", result);
+        } else {
+            show_wifi_success();
         }
 
-        if (buttons & PSP_CTRL_CROSS) {
-            result = run_network_dialog();
-            if (result < 0) {
-                show_error("Wi-Fi connection failed",
-                    "Check the WLAN switch and access point settings.", result);
-                buttons = wait_for_button();
-                if (buttons & PSP_CTRL_CIRCLE) {
-                    continue;
-                }
-            } else {
-                show_wifi_success();
-                buttons = wait_for_button();
-                if (buttons & PSP_CTRL_CIRCLE) {
-                    continue;
-                }
-            }
-        }
+        /* Only CROSS reopens the Wi-Fi dialog. HOME is handled by PSP OS. */
+        wait_for_cross();
     }
 
+    /* Kept as explicit cleanup for any future normal-exit path. */
     term_network();
-
     stop_result = sceKernelStopModule(module_id, 0, NULL, &status, NULL);
-    if (stop_result < 0) {
-        pspDebugScreenClear();
-        pspDebugScreenSetXY(0, 0);
-        pspDebugScreenPrintf("Warning: could not stop PMSP PRX.\n");
-        print_error("Error", stop_result);
-        wait_for_button();
+    if (stop_result >= 0) {
+        sceKernelUnloadModule(module_id);
     }
 
-    sceKernelUnloadModule(module_id);
     sceKernelExitGame();
     return 0;
 }
