@@ -19,7 +19,7 @@
 #include <string.h>
 #include <math.h>
 
-PSP_MODULE_INFO("PMSP Wi-Fi Tester", PSP_MODULE_USER, 1, 0);
+PSP_MODULE_INFO("PMSP Wi-Fi Tester", 0, 1, 1);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
 
 #ifndef M_PI
@@ -311,15 +311,19 @@ int main(void)
     pspDebugScreenPrintf("Dialog is integrated into EBOOT.PBP.\n");
     pspDebugScreenPrintf("Initializing network modules...\n");
 
+    /*
+     * Match the official PSPSDK netdialog sample:
+     * initialize networking before creating the callback thread.
+     */
+    result = initialize_network();
+    if (result < 0)
+        goto error;
+
     result = setup_callbacks();
     if (result < 0) {
         g_error_stage = "setup_callbacks";
         goto error;
     }
-
-    result = initialize_network();
-    if (result < 0)
-        goto error;
 
     pspDebugScreenPrintf("Network initialized.\n");
     pspDebugScreenPrintf("Opening Wi-Fi settings...\n");
