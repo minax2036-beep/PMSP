@@ -1,7 +1,6 @@
 /*
  * PMSP Wi-Fi Dialog Tester
- * The Netconf dialog now runs directly inside this EBOOT.PBP.
- * Network initialization follows the official PSPSDK netdialog sample.
+ * Network dialog flow ported from the working minax2036-beep/psps main.c.
  */
 
 #include <pspkernel.h>
@@ -105,6 +104,31 @@ static int setup_callbacks(void)
     return sceKernelStartThread(thread_id, 0, NULL);
 }
 
+static void setup_gu(void)
+{
+    sceGuInit();
+
+    sceGuStart(GU_DIRECT, g_display_list);
+    sceGuDrawBuffer(GU_PSM_8888, (void *)0, BUF_WIDTH);
+    sceGuDispBuffer(SCREEN_WIDTH, SCREEN_HEIGHT,
+                    (void *)FRAME_SIZE, BUF_WIDTH);
+    sceGuDepthBuffer((void *)(FRAME_SIZE * 2), BUF_WIDTH);
+    sceGuOffset(2048 - (SCREEN_WIDTH / 2),
+                2048 - (SCREEN_HEIGHT / 2));
+    sceGuViewport(2048, 2048, SCREEN_WIDTH, SCREEN_HEIGHT);
+    sceGuScissor(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    sceGuEnable(GU_SCISSOR_TEST);
+    sceGuFinish();
+    sceGuSync(0, 0);
+
+    sceDisplayWaitVblankStart();
+    sceGuDisplay(GU_TRUE);
+}
+
+/*
+ * Keep the initialization order and Apctl parameters from the working
+ * psps project: COMMON -> INET -> sceNetInit -> InetInit -> ApctlInit.
+ */
 static int initialize_network(void)
 {
     int result;
@@ -134,7 +158,7 @@ static int initialize_network(void)
     g_inet_initialized = 1;
 
     g_error_stage = "sceNetApctlInit";
-    result = sceNetApctlInit(0x2000, 42);
+    result = sceNetApctlInit(0x8000, 48);
     if (result < 0)
         return result;
     g_apctl_initialized = 1;
@@ -170,92 +194,34 @@ static void terminate_network(void)
     }
 }
 
-static void setup_gu(void)
+static void draw_background(void)
 {
-    sceGuInit();
-
     sceGuStart(GU_DIRECT, g_display_list);
-    sceGuDrawBuffer(GU_PSM_8888, (void *)0, BUF_WIDTH);
-    sceGuDispBuffer(SCREEN_WIDTH, SCREEN_HEIGHT,
-                    (void *)FRAME_SIZE, BUF_WIDTH);
-    sceGuDepthBuffer((void *)(FRAME_SIZE * 2), BUF_WIDTH);
-    sceGuOffset(2048 - (SCREEN_WIDTH / 2),
-                2048 - (SCREEN_HEIGHT / 2));
-    sceGuViewport(2048, 2048, SCREEN_WIDTH, SCREEN_HEIGHT);
-    sceGuDepthRange(0xc350, 0x2710);
-    sceGuScissor(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-    sceGuEnable(GU_SCISSOR_TEST);
-    sceGuDepthFunc(GU_GEQUAL);
-    sceGuEnable(GU_DEPTH_TEST);
-    sceGuFrontFace(GU_CW);
-    sceGuShadeModel(GU_SMOOTH);
-    sceGuEnable(GU_CULL_FACE);
-    sceGuEnable(GU_CLIP_PLANES);
+    sceGuClearColor(0xff222222);
+    sceGuClear(GU_COLOR_BUFFER_BIT);
     sceGuFinish();
-    sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
-
-    sceDisplayWaitVblankStart();
-    sceGuDisplay(GU_TRUE);
+    sceGuSync(0, 0);
 }
 
-static void draw_demo_frame(void)
-{
-    static int frame = 0;
-    ScePspFVector3 position = {0.0f, 0.0f, -5.0f};
-    ScePspFVector3 rotation = {
-        frame * 0.79f * ((float)M_PI / 180.0f),
-        frame * 0.98f * ((float)M_PI / 180.0f),
-        frame * 1.32f * ((float)M_PI / 180.0f)
-    };
-
-    sceGuStart(GU_DIRECT, g_display_list);
-    sceGuClearColor(0xff554433);
-    sceGuClearDepth(0);
-    sceGuClear(GU_COLOR_BUFFER_BIT | GU_DEPTH_BUFFER_BIT);
-
-    sceGumMatrixMode(GU_PROJECTION);
-    sceGumLoadIdentity();
-    sceGumPerspective(75.0f, 16.0f / 9.0f, 0.5f, 1000.0f);
-
-    sceGumMatrixMode(GU_VIEW);
-    sceGumLoadIdentity();
-
-    sceGumMatrixMode(GU_MODEL);
-    sceGumLoadIdentity();
-    sceGumTranslate(&position);
-    sceGumRotateXYZ(&rotation);
-
-    sceGumDrawArray(
-        GU_TRIANGLES,
-        GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D,
-        12 * 3, NULL, g_vertices);
-
-    sceGuFinish();
-    sceGuSync(GU_SYNC_FINISH, GU_SYNC_WHAT_DONE);
-    frame++;
-}
-
+/* This is the dialog flow from the working psps/main.c. */
 static int show_wifi_dialog(void)
 {
     int result;
-    int status;
-    int shutdown_started = 0;
     int done = 0;
     pspUtilityNetconfData data;
-    struct pspUtilityNetconfAdhoc adhoc_parameters;
 
     memset(&data, 0, sizeof(data));
+
     data.base.size = sizeof(data);
-    data.base.language = PSP_SYSTEMPARAM_LANGUAGE_JAPANESE;
-    data.base.buttonSwap = PSP_UTILITY_ACCEPT_CIRCLE;
+    sceUtilityGetSystemParamInt(
+        PSP_SYSTEMPARAM_ID_INT_LANGUAGE, &data.base.language);
+    sceUtilityGetSystemParamInt(
+        PSP_SYSTEMPARAM_ID_INT_UNKNOWN, &data.base.buttonSwap);
     data.base.graphicsThread = 17;
     data.base.accessThread = 19;
     data.base.fontThread = 18;
     data.base.soundThread = 16;
     data.action = PSP_NETCONF_ACTION_CONNECTAP;
-
-    memset(&adhoc_parameters, 0, sizeof(adhoc_parameters));
-    data.adhocparam = &adhoc_parameters;
 
     g_error_stage = "sceUtilityNetconfInitStart";
     result = sceUtilityNetconfInitStart(&data);
@@ -263,37 +229,27 @@ static int show_wifi_dialog(void)
         return result;
 
     while (g_running && !done) {
-        status = sceUtilityNetconfGetStatus();
+        draw_background();
 
-        switch (status) {
+        switch (sceUtilityNetconfGetStatus()) {
         case PSP_UTILITY_DIALOG_VISIBLE:
-            draw_demo_frame();
             sceUtilityNetconfUpdate(1);
-            sceDisplayWaitVblankStart();
-            sceGuSwapBuffers();
             break;
 
         case PSP_UTILITY_DIALOG_QUIT:
-            if (!shutdown_started) {
-                sceUtilityNetconfShutdownStart();
-                shutdown_started = 1;
-            }
-            sceDisplayWaitVblankStart();
-            break;
-
-        case PSP_UTILITY_DIALOG_FINISHED:
-            sceDisplayWaitVblankStart();
+            sceUtilityNetconfShutdownStart();
             break;
 
         case PSP_UTILITY_DIALOG_NONE:
             done = 1;
             break;
 
-        case PSP_UTILITY_DIALOG_INIT:
         default:
-            sceDisplayWaitVblankStart();
             break;
         }
+
+        sceDisplayWaitVblankStart();
+        sceGuSwapBuffers();
     }
 
     return 0;
@@ -305,31 +261,30 @@ int main(void)
     int state = PSP_NET_APCTL_STATE_DISCONNECTED;
 
     pspDebugScreenInit();
-
     pspDebugScreenPrintf("PMSP WI-FI TESTER\n");
     pspDebugScreenPrintf("------------------------------\n");
-    pspDebugScreenPrintf("Dialog is integrated into EBOOT.PBP.\n");
-    pspDebugScreenPrintf("Initializing network modules...\n");
+    pspDebugScreenPrintf("Ported from the working psps project.\n");
+    pspDebugScreenPrintf("Preparing graphics and callbacks...\n");
 
     /*
-     * Match the official PSPSDK netdialog sample:
-     * initialize networking before creating the callback thread.
+     * Match the working psps application order:
+     * callbacks -> GU -> network stack -> Netconf dialog.
      */
-    result = initialize_network();
+    g_error_stage = "setup_callbacks";
+    result = setup_callbacks();
     if (result < 0)
         goto error;
 
-    result = setup_callbacks();
-    if (result < 0) {
-        g_error_stage = "setup_callbacks";
+    setup_gu();
+
+    result = initialize_network();
+    if (result < 0)
         goto error;
-    }
 
     pspDebugScreenPrintf("Network initialized.\n");
     pspDebugScreenPrintf("Opening Wi-Fi settings...\n");
     sceKernelDelayThread(500000);
 
-    setup_gu();
     result = show_wifi_dialog();
     if (result < 0)
         goto error;
@@ -357,6 +312,7 @@ int main(void)
 
 error:
     terminate_network();
+    sceGuTerm();
     pspDebugScreenInit();
     pspDebugScreenPrintf("PMSP Wi-Fi Tester failed\n");
     pspDebugScreenPrintf("Stage: %s\n", g_error_stage);
