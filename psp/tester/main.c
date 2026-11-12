@@ -32,7 +32,8 @@ PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
 
 static volatile int g_running = 1;
 static const char *g_error_stage = "startup";
-static unsigned int __attribute__((aligned(16))) g_display_list[4096];
+/* Match psps: allocate a 256 KiB GU command list. */
+static unsigned int __attribute__((aligned(16))) g_display_list[65536];
 
 static int g_common_loaded = 0;
 static int g_inet_loaded = 0;
@@ -260,15 +261,13 @@ int main(void)
     int result;
     int state = PSP_NET_APCTL_STATE_DISCONNECTED;
 
-    pspDebugScreenInit();
-    pspDebugScreenPrintf("PMSP WI-FI TESTER\n");
-    pspDebugScreenPrintf("------------------------------\n");
-    pspDebugScreenPrintf("Ported from the working psps project.\n");
-    pspDebugScreenPrintf("Preparing graphics and callbacks...\n");
-
     /*
-     * Match the working psps application order:
-     * callbacks -> GU -> network stack -> Netconf dialog.
+     * Show the known-working psps Netconf dialog before any PMSP UI or
+     * application-specific processing:
+     * callbacks -> GU -> network stack -> Netconf dialog -> PMSP code.
+     *
+     * Do not initialize pspDebugScreen before the dialog; its framebuffer
+     * output is not needed during the native utility dialog.
      */
     g_error_stage = "setup_callbacks";
     result = setup_callbacks();
